@@ -8,6 +8,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import parse_qs, urlsplit
 
 from . import llm, service
 from .config import Settings
@@ -36,6 +37,11 @@ class CoachHandler(BaseHTTPRequestHandler):
             self._run(lambda: service.today(self.settings, self.store, date.today()))
         elif path == "/api/health":
             self._run(lambda: service.health(self.settings))
+        elif path == "/api/learn":
+            self._run(lambda: service.learn_overview(self.store))
+        elif path == "/api/learn/unit":
+            unit_id = parse_qs(urlsplit(self.path).query).get("id", [""])[0]
+            self._run(lambda: service.unit_detail(self.store, unit_id))
         else:
             self._send_json({"error": "Not found"}, HTTPStatus.NOT_FOUND)
 
@@ -45,6 +51,8 @@ class CoachHandler(BaseHTTPRequestHandler):
             "/api/draft": self._post_draft,
             "/api/submit": self._post_submit,
             "/api/level": self._post_level,
+            "/api/practice/start": self._post_practice_start,
+            "/api/practice/submit": self._post_practice_submit,
         }
         handler = routes.get(path)
         if handler is None:
@@ -68,6 +76,19 @@ class CoachHandler(BaseHTTPRequestHandler):
 
     def _post_level(self, body: dict[str, Any]) -> dict[str, Any]:
         return service.set_level(self.store, date.today(), _text(body, "level"))
+
+    def _post_practice_start(self, body: dict[str, Any]) -> dict[str, Any]:
+        return service.practice_start(self.settings, self.store, _text(body, "unit_id"))
+
+    def _post_practice_submit(self, body: dict[str, Any]) -> dict[str, Any]:
+        return service.practice_submit(
+            self.settings,
+            self.store,
+            _text(body, "unit_id"),
+            _text(body, "task"),
+            _text(body, "plan"),
+            _text(body, "draft"),
+        )
 
     # Helpers --------------------------------------------------------------
     def _run(self, action: Any) -> None:

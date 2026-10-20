@@ -16,18 +16,30 @@
     </div>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button class="tab active" type="button" role="tab" data-view="today" aria-selected="true">Today</button>
+    <button class="tab" type="button" role="tab" data-view="learn" aria-selected="false">Learn</button>
+  </nav>
+
   <main class="container">
     <div class="notice" id="notice" hidden></div>
 
-    <section class="card challenge-head" id="challenge-head">
-      <p class="eyebrow" id="eyebrow">Today's challenge</p>
-      <h1 id="title">Loading…</h1>
-      <p class="meta" id="meta"></p>
-    </section>
+    <div id="today-view">
+      <section class="card challenge-head" id="challenge-head">
+        <p class="eyebrow" id="eyebrow">Today's challenge</p>
+        <h1 id="title">Loading…</h1>
+        <p class="meta" id="meta"></p>
+        <p class="focus" id="focus"></p>
+      </section>
 
-    <nav class="steps" id="steps" aria-label="Writing steps"></nav>
+      <nav class="steps" id="steps" aria-label="Writing steps"></nav>
 
-    <section class="card panel" id="panel" aria-live="polite"></section>
+      <section class="card panel" id="panel" aria-live="polite"></section>
+    </div>
+
+    <div id="learn-view" hidden>
+      <section id="learn-panel" aria-live="polite"></section>
+    </div>
   </main>
 
   <script src="/static/app.js"></script>

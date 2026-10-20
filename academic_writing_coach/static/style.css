@@ -189,6 +189,73 @@ textarea.draft { min-height: 320px; }
 .improved { white-space: pre-wrap; background: var(--bg); border-radius: 10px; padding: 12px 14px; }
 .error { color: var(--danger); font-weight: 600; }
 
+.tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 760px;
+  margin: 12px auto 0;
+  padding: 0 16px;
+}
+.tab {
+  font: inherit;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 14px;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+}
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.focus {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.unit-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.unit-card:disabled { opacity: .55; cursor: not-allowed; }
+.unit-card.current { border-color: var(--accent); }
+.unit-top { display: flex; align-items: center; gap: 10px; }
+.unit-top strong { flex: 1; }
+.unit-card p { margin: 4px 0 0; }
+.unit-num {
+  width: 26px; height: 26px; border-radius: 50%; line-height: 26px; text-align: center;
+  background: var(--line); font-weight: 700; font-size: 13px;
+}
+.badge {
+  font-size: 12px; padding: 2px 8px; border-radius: 999px;
+  background: var(--line); color: var(--muted);
+}
+.unit-card.done .badge { background: var(--accent-soft); color: var(--accent); }
+.unit-card.current .badge { background: var(--accent); color: #fff; }
+
+.compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+.compare > div { border-radius: 10px; padding: 12px 14px; border: 1px solid var(--line); }
+.compare p { margin: 6px 0 0; }
+.compare .weak { background: var(--warn-soft); }
+.compare .strong { background: var(--accent-soft); }
+
+@media (max-width: 560px) {
+  .compare { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 560px) {
   .steps { grid-template-columns: repeat(5, 1fr); }
   .step-btn { font-size: 12px; }

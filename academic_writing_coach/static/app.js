@@ -1,9 +1,11 @@
-// Academic Writing Coach: a five-step daily challenge, graded by a local model.
+// Academic Writing Coach: a Learn course of ordered units, plus a five-step daily challenge. Graded by a local model.
 "use strict";
 
 const STEP_NAMES = ["Understand", "Plan", "Write", "Check", "Feedback"];
+const MIN_WORDS = 30; // Matches the server's minimum for a submission.
 // `plan` and `draft` hold the live text; the server copy is updated by autosave.
 const state = {
+  view: "today",
   data: null,
   step: 0,
   plan: "",
@@ -12,6 +14,9 @@ const state = {
   saveStatus: "Saved",
   busy: false,
   submitHint: "",
+  learn: null,       // { overview } from /api/learn
+  unit: null,        // unit detail from /api/learn/unit
+  practice: null,    // { task, text, result } for the open unit, held in memory
 };
 
 const $ = (id) => document.getElementById(id);
@@ -52,27 +57,47 @@ function showNotice(message) {
   notice.hidden = !message;
 }
 
+function capitalise(text) {
+  return text ? text[0].toUpperCase() + text.slice(1) : text;
+}
+
+// Views ---------------------------------------------------------------------
+
+function setView(view) {
+  state.view = view;
+  for (const button of document.querySelectorAll(".tab")) {
+    const active = button.dataset.view === view;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
+  $("today-view").hidden = view !== "today";
+  $("learn-view").hidden = view !== "learn";
+  if (view === "learn") loadLearn();
+  else render();
+}
+
+// Header and daily view ----------------------------------------------------
+
 function targetRange() {
   return state.data.challenge.word_range || [state.data.min_words, 300];
 }
 
-// Header -------------------------------------------------------------------
-
 function renderHeader() {
-  const { progress, level, levels, challenge, source, date } = state.data;
+  const { progress, level, levels, challenge, source, date, focus } = state.data;
   $("stats").replaceChildren(
     el("span", { text: `🔥 ${progress.streak}-day streak` }),
     el("span", { text: `⭐ ${progress.total_xp} XP` }),
-    el("span", { text: `✅ ${progress.days_completed} days` }),
+    el("span", { text: `📘 ${progress.units_completed}/${progress.units_total} units` }),
   );
   $("level").replaceChildren(...levels.map((name) =>
-    el("option", { value: name, selected: name === level, text: name[0].toUpperCase() + name.slice(1) })
+    el("option", { value: name, selected: name === level, text: capitalise(name) })
   ));
   $("eyebrow").textContent = `Today's challenge · ${date}`;
   $("title").textContent = challenge.title;
   const [low, high] = targetRange();
   const scenario = (challenge.scenario || "writing").replaceAll("_", " ");
   $("meta").textContent = `${scenario} · target ${low}–${high} words`;
+  $("focus").textContent = `Focus skill: ${focus.title}. ${focus.skill}`;
   showNotice(source === "template"
     ? "The local model is offline, so this challenge came from the built-in template. Start the LM Studio server to get AI challenges and feedback."
     : "");
@@ -97,8 +122,6 @@ function goToStep(index) {
   state.step = index;
   render();
 }
-
-// Steps --------------------------------------------------------------------
 
 function stepUnderstand(challenge) {
   return [
@@ -183,16 +206,25 @@ function stepFeedback() {
       el("p", { text: "Submit your text in step 4 to see the teacher's feedback." }),
     ];
   }
-  const fb = latest.feedback;
+  return [
+    el("h2", { text: "5. Feedback" }),
+    feedbackNodes(latest),
+    el("div", { class: "row" },
+      el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(2) }, "Revise my draft")),
+  ];
+}
+
+// Feedback, shared by daily and Learn practice. `result` has overall, xp and feedback.
+function feedbackNodes(result) {
+  const fb = result.feedback;
   const scoreRows = Object.entries(fb.scores).map(([key, value]) => {
     const label = key.replaceAll("_", " ");
     return el("div", { class: "score-row" },
-      el("div", { text: `${label[0].toUpperCase()}${label.slice(1)}: ${value}/5` }),
+      el("div", { text: `${capitalise(label)}: ${value}/5` }),
       el("div", { class: "bar" }, el("div", { style: `width:${value * 20}%` })));
   });
-  return [
-    el("h2", { text: "5. Feedback" }),
-    el("p", {}, el("strong", { text: `Overall ${latest.overall}/100` }), ` · +${latest.xp} XP`),
+  return el("div", {},
+    el("p", {}, el("strong", { text: `Overall ${result.overall}/100` }), ` · +${result.xp} XP`),
     el("div", { class: "score" }, scoreRows),
     fb.strengths.length ? el("div", {}, el("h2", { text: "What works" }),
       el("ul", { class: "list" }, fb.strengths.map((s) => el("li", { text: s })))) : null,
@@ -205,12 +237,10 @@ function stepFeedback() {
     fb.next_focus ? el("p", {}, el("strong", { text: "Next focus: " }), fb.next_focus) : null,
     fb.mini_exercise ? el("div", { class: "brief" }, el("strong", { text: "Mini exercise" }),
       el("p", { text: fb.mini_exercise })) : null,
-    el("div", { class: "row" },
-      el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(2) }, "Revise my draft")),
-  ];
+  );
 }
 
-// Actions ------------------------------------------------------------------
+// Daily actions -------------------------------------------------------------
 
 function onEdit(field, value) {
   state[field] = value;
@@ -257,7 +287,7 @@ async function submitDraft() {
     state.data.latest = { overall: result.overall, xp: result.xp, feedback: result.feedback };
     state.data.submissions.push({ id: result.submission_id, overall: result.overall, xp: result.xp });
     if (state.step === 3) state.step = 4; // Respect a step the user moved to while grading.
-    showNotice("");
+    showNotice(result.unit_passed ? "Today's writing passed the focus unit. It is marked complete in Learn." : "");
   } catch (error) {
     showNotice(error.message);
   } finally {
@@ -266,12 +296,173 @@ async function submitDraft() {
   }
 }
 
-function render() {
+function renderDaily() {
   renderHeader();
   renderSteps();
   const challenge = state.data.challenge;
   const builders = [stepUnderstand, stepPlan, stepWrite, stepCheck, stepFeedback];
   $("panel").replaceChildren(...builders[state.step](challenge).flat().filter(Boolean));
+}
+
+// Learn view ----------------------------------------------------------------
+
+async function loadLearn() {
+  $("learn-panel").replaceChildren(el("p", { class: "meta", text: "Loading units…" }));
+  try {
+    state.learn = await api("/api/learn");
+    if (state.unit) await openUnit(state.unit.id, { silent: true });
+    else renderLearn();
+  } catch (error) {
+    $("learn-panel").replaceChildren(el("p", { class: "error", text: error.message }));
+  }
+}
+
+function renderLearn() {
+  if (state.unit) return renderUnit();
+  const { units, completed, total, pass_score } = state.learn;
+  const cards = units.map((unit) => {
+    const badge = { done: "Complete", current: "Focus now", locked: "Locked" }[unit.status];
+    const score = unit.best_overall === null ? "" : ` · best ${unit.best_overall}/100`;
+    return el("button", {
+      class: `unit-card ${unit.status}`,
+      type: "button",
+      disabled: unit.status === "locked",
+      onclick: () => openUnit(unit.id),
+    },
+      el("div", { class: "unit-top" }, el("span", { class: "unit-num", text: String(unit.index + 1) }),
+        el("strong", { text: unit.title }), el("span", { class: "badge", text: badge })),
+      el("p", { class: "meta", text: unit.skill + score }));
+  });
+  $("learn-panel").replaceChildren(
+    el("h2", { text: `Learn: ${completed} of ${total} units complete` }),
+    el("p", { class: "meta", text: `Units unlock in order. Pass a practice task with ${pass_score}/100 or more to complete a unit. Your daily challenge focuses on the current unit.` }),
+    cards,
+  );
+}
+
+async function openUnit(unitId, options = {}) {
+  try {
+    state.unit = await api(`/api/learn/unit?id=${encodeURIComponent(unitId)}`);
+    if (!options.silent) state.practice = null;
+    renderLearn();
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+function closeUnit() {
+  state.unit = null;
+  state.practice = null;
+  loadLearn();
+}
+
+function renderUnit() {
+  const unit = state.unit;
+  const back = el("button", { class: "btn secondary", type: "button", onclick: closeUnit }, "← All units");
+  const lesson = [
+    el("p", { class: "eyebrow", text: `Unit ${unit.index + 1}` }),
+    el("h1", { text: unit.title }),
+    el("p", { text: unit.skill }),
+    el("h2", { text: "The rule" }),
+    el("p", { text: unit.explanation }),
+    el("div", { class: "compare" },
+      el("div", { class: "weak" }, el("strong", { text: "Weaker" }), el("p", { text: unit.weak })),
+      el("div", { class: "strong" }, el("strong", { text: "Stronger" }), el("p", { text: unit.strong }))),
+    el("p", { class: "meta", text: unit.why_it_works }),
+    el("h2", { text: "Checklist" }),
+    el("ul", { class: "list" }, unit.checklist.map((item) => el("li", { text: item }))),
+  ];
+  const practiceSection = unit.status === "done" && !state.practice
+    ? el("p", { class: "meta", text: `Completed. Best score ${unit.best_overall}/100. You can practise again below.` })
+    : null;
+  const practice = state.practice
+    ? renderPractice(unit)
+    : el("div", { class: "row" },
+      el("span", { class: "wc", text: `Pass with ${unit.pass_score}/100 or more.` }),
+      el("button", { class: "btn", type: "button", onclick: startPractice }, "Start practice"));
+  $("learn-panel").replaceChildren(
+    el("div", { class: "card" }, back, ...lesson, practiceSection),
+    el("div", { class: "card" }, el("h2", { text: "Practice" }), practice),
+  );
+}
+
+async function startPractice() {
+  try {
+    const result = await api("/api/practice/start", { method: "POST", body: { unit_id: state.unit.id } });
+    state.practice = { task: result.task, source: result.source, text: "", result: null, busy: false };
+    renderUnit();
+  } catch (error) {
+    showNotice(error.message);
+  }
+}
+
+function renderPractice(unit) {
+  const practice = state.practice;
+  const textarea = el("textarea", {
+    class: "draft",
+    placeholder: "Write your answer here…",
+    oninput: (event) => { practice.text = event.target.value; updatePracticeCount(); },
+  }, practice.text);
+  const hint = el("span", { class: "wc", id: "practice-count" });
+  const children = [
+    practice.source === "template" ? el("p", { class: "notice", text: "Offline exercise from the built-in set; start the local model for new ones." }) : null,
+    el("div", { class: "brief" }, el("strong", { text: "Exercise" }), el("p", { text: practice.task })),
+    textarea,
+    el("div", { class: "row" }, hint,
+      el("button", { class: "btn", type: "button", disabled: practice.busy, onclick: submitPractice },
+        practice.busy ? "Grading…" : "Submit practice")),
+    practice.result ? practiceResultNodes(practice.result, unit) : null,
+  ];
+  queueMicrotask(updatePracticeCount);
+  return children;
+}
+
+function updatePracticeCount() {
+  const node = $("practice-count");
+  if (node && state.practice) node.textContent = `${wordCount(state.practice.text)} words`;
+}
+
+function practiceResultNodes(result, unit) {
+  const verdict = result.passed
+    ? `Passed with ${result.overall}/100. ${unit.index < state.learn.total - 1 ? "The next unit is unlocked." : "You finished the course."}`
+    : `${result.overall}/100. You need ${unit.pass_score} to pass. Revise using the feedback and resubmit.`;
+  return el("div", {},
+    el("h2", { text: "Feedback" }),
+    el("p", { class: result.passed ? "" : "error", text: verdict }),
+    feedbackNodes(result));
+}
+
+async function submitPractice() {
+  const practice = state.practice;
+  if (!practice || practice.busy) return;
+  const words = wordCount(practice.text);
+  if (words < MIN_WORDS) {
+    showNotice(`Write at least ${MIN_WORDS} words before submitting (${words} now).`);
+    return;
+  }
+  practice.busy = true;
+  renderUnit();
+  try {
+    const result = await api("/api/practice/submit", {
+      method: "POST",
+      body: { unit_id: state.unit.id, task: practice.task, plan: "", draft: practice.text },
+    });
+    practice.result = result;
+    state.unit = result.unit;
+    state.learn = await api("/api/learn");
+    showNotice("");
+  } catch (error) {
+    showNotice(error.message);
+  } finally {
+    practice.busy = false;
+    renderUnit();
+  }
+}
+
+// Shared ---------------------------------------------------------------------
+
+function render() {
+  if (state.view === "today" && state.data) renderDaily();
 }
 
 async function loadToday() {
@@ -291,6 +482,10 @@ async function checkHealth() {
   } catch (error) {
     pill.textContent = "Server error";
   }
+}
+
+for (const button of document.querySelectorAll(".tab")) {
+  button.addEventListener("click", () => setView(button.dataset.view));
 }
 
 $("level").addEventListener("change", async (event) => {

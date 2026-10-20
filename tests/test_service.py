@@ -5,6 +5,7 @@ import pytest
 from academic_writing_coach import service
 from academic_writing_coach.llm import LLMError
 from academic_writing_coach.curriculum import pick_scenario
+from academic_writing_coach.lessons import UNITS
 from academic_writing_coach.store import Store
 
 from conftest import DAY, grading_reply, unreachable_url, valid_challenge, words
@@ -202,4 +203,7 @@ def test_today_payload_with_llm_down(make_settings, store):
         "total_xp": 0,
         "average_overall": None,
         "done_today": False,
+        "units_completed": 0,
+        "units_total": len(UNITS),
     }
+    assert payload["focus"]["id"] == UNITS[0].id

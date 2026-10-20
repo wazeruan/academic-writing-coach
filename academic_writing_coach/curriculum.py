@@ -78,7 +78,9 @@ def pick_topic(day: date) -> str:
     return TOPICS[int(digest, 16) % len(TOPICS)]
 
 
-def generation_messages(scenario: Scenario, level: str, topic: str) -> list[dict[str, str]]:
+def generation_messages(
+    scenario: Scenario, level: str, topic: str, focus_skill: str | None = None
+) -> list[dict[str, str]]:
     schema = (
         '{"title": str, "situation": str, "task": str, '
         '"background": [str, str, str], "requirements": [str, str, str, str], '
@@ -95,8 +97,9 @@ def generation_messages(scenario: Scenario, level: str, topic: str) -> list[dict
         f"Purpose of the genre: {scenario.purpose}\n"
         f"Topic: {topic}\n"
         f"Difficulty: {level}. {LEVEL_GUIDE[level]}\n"
-        f"Target length for the student's answer: {scenario.word_range[0]}-{scenario.word_range[1]} words.\n\n"
-        "Rules:\n"
+        f"Target length for the student's answer: {scenario.word_range[0]}-{scenario.word_range[1]} words.\n"
+        + (f"Focus skill this week: {focus_skill}. The task must require the student to use this skill.\n" if focus_skill else "")
+        + "\nRules:\n"
         "- 'situation' is 2-3 sentences that set the scene and the audience.\n"
         "- 'task' is one clear instruction telling the student what to write.\n"
         "- 'background' gives 3 short factual points the student must use. "
@@ -104,6 +107,22 @@ def generation_messages(scenario: Scenario, level: str, topic: str) -> list[dict
         "- 'requirements' are checkable rules, for example mention a limitation.\n"
         "- 'plan_hints' are the 4 parts the student should outline before drafting.\n\n"
         f"Return JSON matching: {schema}"
+    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
+def practice_messages(unit_title: str, skill: str, level: str, task_hint: str) -> list[dict[str, str]]:
+    system = (
+        "You write short academic writing exercises for non-native English speakers. "
+        "Return one JSON object only, with no commentary."
+    )
+    user = (
+        f"Unit: {unit_title}\nSkill: {skill}\nDifficulty: {level}. {LEVEL_GUIDE[level]}\n"
+        f"Example of the kind of exercise: {task_hint}\n\n"
+        "Write one new exercise on a different academic topic. It must be a self-contained "
+        "instruction (for example, a paragraph to revise or a short passage to write) that makes "
+        "the skill necessary. Keep it under 80 words.\n"
+        'Return JSON matching: {"task": str}'
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 

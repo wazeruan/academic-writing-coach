@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS practice (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id TEXT NOT NULL,
+    task TEXT NOT NULL,
+    plan TEXT NOT NULL DEFAULT '',
+    draft TEXT NOT NULL,
+    overall REAL NOT NULL,
+    xp INTEGER NOT NULL,
+    feedback TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS unit_progress (
+    unit_id TEXT PRIMARY KEY,
+    best_overall REAL NOT NULL,
+    completed_at TEXT
+);
 """
 
 
@@ -118,8 +134,42 @@ class Store:
         return {date.fromisoformat(row["day"]) for row in rows}
 
     def total_xp(self) -> int:
-        rows = self._execute("SELECT COALESCE(SUM(xp), 0) AS xp FROM submissions")
+        rows = self._execute(
+            "SELECT (SELECT COALESCE(SUM(xp), 0) FROM submissions) + (SELECT COALESCE(SUM(xp), 0) FROM practice) AS xp"
+        )
         return int(rows[0]["xp"])
+
+    # Learn practice and unit progress --------------------------------------
+    def add_practice(
+        self, unit_id: str, task: str, plan: str, draft: str, overall: float, xp: int, feedback: dict
+    ) -> int:
+        with self._lock:
+            cursor = self._conn.execute(
+                "INSERT INTO practice (unit_id, task, plan, draft, overall, xp, feedback, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (unit_id, task, plan, draft, overall, xp, json.dumps(feedback), _now()),
+            )
+            self._conn.commit()
+            return int(cursor.lastrowid)
+
+    def record_unit_score(self, unit_id: str, overall: float, passed: bool) -> None:
+        """Keep the best score per unit; stamp completion the first time a score passes."""
+        rows = self._execute("SELECT best_overall, completed_at FROM unit_progress WHERE unit_id = ?", (unit_id,))
+        best = max(overall, rows[0]["best_overall"]) if rows else overall
+        completed = rows[0]["completed_at"] if rows else None
+        if passed and completed is None:
+            completed = _now()
+        self._execute(
+            "INSERT OR REPLACE INTO unit_progress (unit_id, best_overall, completed_at) VALUES (?, ?, ?)",
+            (unit_id, best, completed),
+        )
+
+    def unit_progress(self) -> dict[str, dict[str, Any]]:
+        rows = self._execute("SELECT unit_id, best_overall, completed_at FROM unit_progress")
+        return {
+            row["unit_id"]: {"best_overall": row["best_overall"], "completed_at": row["completed_at"]}
+            for row in rows
+        }
 
     def average_overall(self, limit: int = 10) -> float | None:
         rows = self._execute(

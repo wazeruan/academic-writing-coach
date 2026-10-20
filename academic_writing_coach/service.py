@@ -14,20 +14,20 @@ from .curriculum import (
     grading_messages,
     pick_scenario,
     pick_topic,
+    practice_messages,
     template_challenge,
 )
+from .lessons import PASS_SCORE, UNITS, Unit, unit_by_id
 from .store import Store, streak
 
 MIN_WORDS_TO_SUBMIT = 30
-REQUIRED_CHALLENGE_KEYS = ("title", "situation", "task", "background", "requirements", "plan_hints")
+MAX_TASK_CHARS = 2000
+TEXT_KEYS = ("title", "situation", "task")
+LIST_KEYS = ("background", "requirements", "plan_hints")
 
 
 def word_count(text: str) -> int:
     return len(text.split())
-
-
-TEXT_KEYS = ("title", "situation", "task")
-LIST_KEYS = ("background", "requirements", "plan_hints")
 
 
 def _valid_challenge(payload: dict[str, Any]) -> bool:
@@ -42,6 +42,83 @@ def _valid_challenge(payload: dict[str, Any]) -> bool:
     )
 
 
+# Learn units ---------------------------------------------------------------
+
+def unit_statuses(store: Store) -> list[dict[str, Any]]:
+    """Units in order, each marked done, current (the focus), or locked."""
+    progress = store.unit_progress()
+    current_found = False
+    statuses = []
+    for index, unit in enumerate(UNITS):
+        record = progress.get(unit.id)
+        if record and record["completed_at"]:
+            status = "done"
+        elif not current_found:
+            status = "current"
+            current_found = True
+        else:
+            status = "locked"
+        statuses.append({
+            "id": unit.id,
+            "index": index,
+            "title": unit.title,
+            "skill": unit.skill,
+            "status": status,
+            "best_overall": record["best_overall"] if record else None,
+        })
+    return statuses
+
+
+def current_unit(store: Store) -> Unit:
+    """The focus unit: the first incomplete one, or the last unit once the course is finished."""
+    for status in unit_statuses(store):
+        if status["status"] == "current":
+            return UNITS[status["index"]]
+    return UNITS[-1]
+
+
+def _ensure_unlocked(store: Store, unit_id: str) -> Unit:
+    try:
+        unit = unit_by_id(unit_id)
+    except KeyError as exc:
+        raise ValueError(f"Unknown unit: {unit_id}") from exc
+    status = next(s["status"] for s in unit_statuses(store) if s["id"] == unit_id)
+    if status == "locked":
+        raise ValueError("Finish the earlier units first.")
+    return unit
+
+
+def unit_detail(store: Store, unit_id: str) -> dict[str, Any]:
+    unit = _ensure_unlocked(store, unit_id)
+    status = next(s for s in unit_statuses(store) if s["id"] == unit_id)
+    return {
+        "id": unit.id,
+        "index": status["index"],
+        "title": unit.title,
+        "skill": unit.skill,
+        "explanation": unit.explanation,
+        "weak": unit.weak,
+        "strong": unit.strong,
+        "why_it_works": unit.why_it_works,
+        "checklist": list(unit.checklist),
+        "status": status["status"],
+        "best_overall": status["best_overall"],
+        "pass_score": PASS_SCORE,
+    }
+
+
+def learn_overview(store: Store) -> dict[str, Any]:
+    statuses = unit_statuses(store)
+    return {
+        "units": statuses,
+        "completed": sum(1 for s in statuses if s["status"] == "done"),
+        "total": len(statuses),
+        "pass_score": PASS_SCORE,
+    }
+
+
+# Daily challenge ----------------------------------------------------------
+
 def challenge_for(settings: Settings, store: Store, day: date) -> tuple[dict[str, Any], str]:
     """Return (challenge, source). Model-made challenges are cached per day; templates are not."""
     stored = store.get_challenge(day)
@@ -51,39 +128,51 @@ def challenge_for(settings: Settings, store: Store, day: date) -> tuple[dict[str
     level = store.get_setting("level", "intermediate")
     scenario = pick_scenario(day)
     topic = pick_topic(day)
+    unit = current_unit(store)
     try:
-        generated = llm.chat_json(generation_messages(scenario, level, topic), settings, temperature=0.9)
+        generated = llm.chat_json(
+            generation_messages(scenario, level, topic, focus_skill=unit.skill), settings, temperature=0.9
+        )
+        source = "model"
     except llm.LLMError:
-        return template_challenge(scenario, level, topic), "template"
+        generated, source = template_challenge(scenario, level, topic), "template"
 
     if not _valid_challenge(generated):
-        return template_challenge(scenario, level, topic), "template"
+        generated, source = template_challenge(scenario, level, topic), "template"
 
     generated["word_range"] = list(scenario.word_range)
     generated["level"] = level
     generated["scenario"] = scenario.key
-    store.save_challenge(day, generated)
-    return generated, "model"
+    generated["unit_id"] = unit.id
+    generated["focus_skill"] = unit.skill
+    if source == "model":
+        store.save_challenge(day, generated)
+    return generated, source
 
 
 def progress(store: Store, day: date) -> dict[str, Any]:
     days = store.submitted_days()
+    completed = sum(1 for s in unit_statuses(store) if s["status"] == "done")
     return {
         "streak": streak(days, day),
         "days_completed": len(days),
         "total_xp": store.total_xp(),
         "average_overall": store.average_overall(),
         "done_today": day in days,
+        "units_completed": completed,
+        "units_total": len(UNITS),
     }
 
 
 def today(settings: Settings, store: Store, day: date) -> dict[str, Any]:
     challenge, source = challenge_for(settings, store, day)
     draft = store.get_draft(day)
+    unit = current_unit(store)
     return {
         "date": day.isoformat(),
         "challenge": challenge,
         "source": source,
+        "focus": {"id": unit.id, "title": unit.title, "skill": unit.skill},
         "draft": draft,
         "word_count": word_count(draft["draft"]),
         "submissions": store.submissions_for(day),
@@ -101,6 +190,8 @@ def save_draft(store: Store, day: date, plan: str, draft: str) -> dict[str, Any]
     store.save_draft(day, plan, draft)
     return {"saved": True, "word_count": word_count(draft)}
 
+
+# Grading -----------------------------------------------------------------
 
 def _clamp_score(value: Any) -> int:
     try:
@@ -136,29 +227,93 @@ def _normalise_feedback(raw: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _grade(settings: Settings, store: Store, challenge: dict[str, Any], draft: str, plan: str) -> dict[str, Any]:
+    level = store.get_setting("level", "intermediate")
+    raw = llm.chat_json(grading_messages(challenge, draft, plan, level), settings, temperature=0.3, max_tokens=3000)
+    feedback = _normalise_feedback(raw)
+    average = sum(feedback["scores"].values()) / len(feedback["scores"])
+    return {
+        "feedback": feedback,
+        "overall": round(average * 20, 1),  # 1-5 per criterion becomes 0-100 overall
+        "xp": 10 + round(average * 4),
+    }
+
+
 def submit(settings: Settings, store: Store, day: date, plan: str, draft: str) -> dict[str, Any]:
+    """Daily submission. Passing it also completes the unit that the challenge focused on."""
     words = word_count(draft)
     if words < MIN_WORDS_TO_SUBMIT:
         raise ValueError(f"Write at least {MIN_WORDS_TO_SUBMIT} words before submitting ({words} so far).")
 
     challenge, _ = challenge_for(settings, store, day)
-    level = store.get_setting("level", "intermediate")
-    raw = llm.chat_json(grading_messages(challenge, draft, plan, level), settings, temperature=0.3, max_tokens=3000)
-    feedback = _normalise_feedback(raw)
-
-    average = sum(feedback["scores"].values()) / len(feedback["scores"])
-    overall = round(average * 20, 1)  # 1-5 per criterion becomes 0-100 overall
-    xp = 10 + round(average * 4)
+    graded = _grade(settings, store, challenge, draft, plan)
     store.save_draft(day, plan, draft)
-    submission_id = store.add_submission(day, plan, draft, words, overall, xp, feedback)
+    submission_id = store.add_submission(
+        day, plan, draft, words, graded["overall"], graded["xp"], graded["feedback"]
+    )
+    unit_id = challenge.get("unit_id")
+    passed = graded["overall"] >= PASS_SCORE
+    if unit_id in {unit.id for unit in UNITS}:
+        store.record_unit_score(unit_id, graded["overall"], passed)
     return {
         "submission_id": submission_id,
-        "overall": overall,
-        "xp": xp,
-        "feedback": feedback,
+        "overall": graded["overall"],
+        "xp": graded["xp"],
+        "feedback": graded["feedback"],
+        "unit_passed": passed,
         "progress": progress(store, day),
     }
 
+
+# Learn practice ----------------------------------------------------------
+
+def practice_start(settings: Settings, store: Store, unit_id: str) -> dict[str, Any]:
+    unit = _ensure_unlocked(store, unit_id)
+    level = store.get_setting("level", "intermediate")
+    try:
+        generated = llm.chat_json(
+            practice_messages(unit.title, unit.skill, level, unit.practice_task), settings, temperature=0.9
+        )
+        task = generated.get("task")
+        source = "model"
+        if not isinstance(task, str) or not task.strip():
+            raise llm.LLMError("No task in model reply")
+    except llm.LLMError:
+        task, source = unit.practice_task, "template"
+    return {"unit_id": unit.id, "task": task.strip()[:MAX_TASK_CHARS], "source": source}
+
+
+def practice_submit(
+    settings: Settings, store: Store, unit_id: str, task: str, plan: str, draft: str
+) -> dict[str, Any]:
+    unit = _ensure_unlocked(store, unit_id)
+    words = word_count(draft)
+    if words < MIN_WORDS_TO_SUBMIT:
+        raise ValueError(f"Write at least {MIN_WORDS_TO_SUBMIT} words before submitting ({words} so far).")
+    exercise = {
+        "title": unit.title,
+        "situation": "Practice exercise for one Learn unit.",
+        "task": task[:MAX_TASK_CHARS] or unit.practice_task,
+        "background": [],
+        "requirements": list(unit.checklist),
+    }
+    graded = _grade(settings, store, exercise, draft, plan)
+    passed = graded["overall"] >= PASS_SCORE
+    attempt_id = store.add_practice(
+        unit.id, exercise["task"], plan, draft, graded["overall"], graded["xp"], graded["feedback"]
+    )
+    store.record_unit_score(unit.id, graded["overall"], passed)
+    return {
+        "attempt_id": attempt_id,
+        "overall": graded["overall"],
+        "xp": graded["xp"],
+        "passed": passed,
+        "feedback": graded["feedback"],
+        "unit": unit_detail(store, unit.id),
+    }
+
+
+# Settings and health ----------------------------------------------------
 
 def set_level(store: Store, day: date, level: str) -> dict[str, Any]:
     if level not in LEVELS:

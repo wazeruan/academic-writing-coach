@@ -4,6 +4,7 @@ import threading
 
 import pytest
 
+from academic_writing_coach.lessons import UNITS
 from academic_writing_coach.server import STATIC_DIR, make_server
 from academic_writing_coach.store import Store
 
@@ -135,3 +136,39 @@ def test_non_string_field_returns_400(server):
     status, payload = _json(server, "POST", "/api/draft", body={"plan": 1, "draft": "x"})
     assert status == 400
     assert "'plan' must be a string" in payload["error"]
+
+
+def test_get_learn_overview(server):
+    status, payload = _json(server, "GET", "/api/learn")
+    assert status == 200
+    assert payload["total"] == len(UNITS)
+    assert payload["completed"] == 0
+    assert payload["units"][0]["status"] == "current"
+    assert payload["units"][1]["status"] == "locked"
+
+
+def test_get_learn_unit_detail(server):
+    status, payload = _json(server, "GET", f"/api/learn/unit?id={UNITS[0].id}")
+    assert status == 200
+    assert payload["id"] == UNITS[0].id
+    assert payload["pass_score"] == 70
+
+
+def test_get_learn_unit_unknown_id_returns_400(server):
+    status, payload = _json(server, "GET", "/api/learn/unit?id=unknown")
+    assert status == 400
+    assert "Unknown unit" in payload["error"]
+
+
+def test_get_learn_unit_missing_id_returns_400(server):
+    status, payload = _json(server, "GET", "/api/learn/unit")
+    assert status == 400
+
+
+def test_post_practice_submit_with_short_text_returns_400(server):
+    status, payload = _json(
+        server, "POST", "/api/practice/submit",
+        body={"unit_id": UNITS[0].id, "task": "t", "plan": "", "draft": words(5)},
+    )
+    assert status == 400
+    assert "at least 30 words" in payload["error"]
