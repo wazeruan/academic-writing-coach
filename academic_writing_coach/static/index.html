@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Academic Writing Coach</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Academic Writing Coach</div>
+    <div class="stats" id="stats" aria-live="polite"></div>
+    <div class="controls">
+      <select id="level" aria-label="Difficulty"></select>
+      <span class="pill" id="llm-status">Checking model…</span>
+    </div>
+  </header>
+
+  <main class="container">
+    <div class="notice" id="notice" hidden></div>
+
+    <section class="card challenge-head" id="challenge-head">
+      <p class="eyebrow" id="eyebrow">Today's challenge</p>
+      <h1 id="title">Loading…</h1>
+      <p class="meta" id="meta"></p>
+    </section>
+
+    <nav class="steps" id="steps" aria-label="Writing steps"></nav>
+
+    <section class="card panel" id="panel" aria-live="polite"></section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
