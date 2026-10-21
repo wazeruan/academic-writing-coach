@@ -300,15 +300,20 @@ async function submitDraft() {
 function renderBrief(challenge) {
   const [low, high] = targetRange();
   $("brief-body").replaceChildren(
-    el("p", { text: challenge.task }),
-    el("p", { class: "brief-target", text: `Target ${low}–${high} words` }),
-    el("strong", { text: "Requirements" }),
-    el("ul", {}, challenge.requirements.map((rule) => el("li", { text: rule }))),
-    el("strong", { text: "Background facts" }),
-    el("ul", {}, challenge.background.map((fact) => el("li", { text: fact }))),
-    el("strong", { text: "Key vocabulary" }),
-    el("div", { class: "brief-chips" }, (challenge.key_vocabulary || []).map((item) =>
-      el("span", { title: item.meaning, text: item.term }))),
+    el("div", { class: "tb-grid" },
+      el("div", { class: "tb-col" },
+        el("strong", { text: "Task" }),
+        el("p", { class: "task-text", text: challenge.task }),
+        el("p", { class: "brief-target", text: `Target ${low}–${high} words` })),
+      el("div", { class: "tb-col" },
+        el("strong", { text: "Requirements" }),
+        el("ul", {}, challenge.requirements.map((rule) => el("li", { text: rule })))),
+      el("div", { class: "tb-col" },
+        el("strong", { text: "Background facts" }),
+        el("ul", {}, challenge.background.map((fact) => el("li", { text: fact }))),
+        el("strong", { text: "Key vocabulary" }),
+        el("div", { class: "brief-chips" }, (challenge.key_vocabulary || []).map((item) =>
+          el("span", { title: item.meaning, text: item.term }))))),
   );
   // Wide screens keep the brief open; phones start with it folded to save space.
   if (window.matchMedia("(min-width: 900px)").matches) $("brief").open = true;
