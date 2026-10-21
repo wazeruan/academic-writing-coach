@@ -156,7 +156,7 @@ def make_server(settings: Settings, store: Store | None = None) -> ThreadingHTTP
 
 
 def main() -> None:
-    settings = Settings()
+    settings = llm.resolve_model(Settings())
     server = make_server(settings)
     print(f"Academic Writing Coach running at http://{settings.host}:{settings.port}")
     print(f"Local LLM expected at {settings.llm_base_url} (model: {settings.llm_model})")

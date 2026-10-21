@@ -3,6 +3,7 @@
 import json
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from typing import Any
 
 from .config import Settings
@@ -10,6 +11,13 @@ from .config import Settings
 
 class LLMError(RuntimeError):
     """The local model is unreachable, or its answer could not be used."""
+
+
+def _headers(settings: Settings, *, json_body: bool) -> dict[str, str]:
+    headers = {"Content-Type": "application/json"} if json_body else {}
+    if settings.llm_api_key:
+        headers["Authorization"] = f"Bearer {settings.llm_api_key}"
+    return headers
 
 
 def chat(
@@ -29,7 +37,7 @@ def chat(
     request = urllib.request.Request(
         settings.llm_base_url.rstrip("/") + "/chat/completions",
         data=json.dumps(body).encode("utf-8"),
-        headers={"Content-Type": "application/json"},
+        headers=_headers(settings, json_body=True),
         method="POST",
     )
     try:
@@ -71,9 +79,28 @@ def chat_json(messages: list[dict[str, str]], settings: Settings, **kwargs: Any)
     return extract_json(chat(messages, settings, **kwargs))
 
 
+def resolve_model(settings: Settings) -> Settings:
+    """Fill in the model name when none is configured, using the server's default model.
+
+    LM Studio requires a model name in every request. Its health probe reports the default model,
+    so switching the served model in LM Studio only needs an app restart, not a code change.
+    """
+    if settings.llm_model:
+        return settings
+    request = urllib.request.Request(settings.llm_base_url.rstrip("/").removesuffix("/v1") + "/health")
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            default = json.load(response).get("default_model")
+    except (urllib.error.URLError, OSError, ValueError, AttributeError):
+        default = None
+    return replace(settings, llm_model=default or "local-model")
+
+
 def status(settings: Settings) -> dict[str, Any]:
     """Report whether the server answers and which models it lists."""
-    request = urllib.request.Request(settings.llm_base_url.rstrip("/") + "/models")
+    request = urllib.request.Request(
+        settings.llm_base_url.rstrip("/") + "/models", headers=_headers(settings, json_body=False)
+    )
     try:
         with urllib.request.urlopen(request, timeout=3) as response:
             data = json.load(response)
