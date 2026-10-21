@@ -104,7 +104,8 @@ def generation_messages(
         "- 'task' is one clear instruction telling the student what to write.\n"
         "- 'background' gives 3 short factual points the student must use. "
         "Invent plausible but clearly fictional study details (sample sizes, findings).\n"
-        "- 'requirements' are checkable rules, for example mention a limitation.\n"
+        "- 'requirements' are checkable rules of at most 12 words each, for example 'Mention one limitation.'\n"
+        "- 'background' facts are at most 20 words each.\n"
         "- 'plan_hints' are the 4 parts the student should outline before drafting.\n\n"
         f"Return JSON matching: {schema}"
     )

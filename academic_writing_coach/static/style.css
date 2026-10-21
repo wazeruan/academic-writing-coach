@@ -280,21 +280,24 @@ textarea.draft { min-height: 320px; }
 
 /* Daily page: the question on the left, the work on the right. */
 .daily { display: grid; gap: 16px; }
-.question-pane h1 { font-size: 22px; }
+.question-pane { padding: 16px 18px; }
+.question-pane h1 { font-size: 20px; margin: 2px 0 10px; }
 .question-pane h3 {
-  margin: 18px 0 6px;
+  margin: 14px 0 4px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
 }
-.q-task { font-size: 18px; line-height: 1.6; margin: 0; }
-.q-target { margin: 8px 0 0; color: var(--accent); font-weight: 700; }
-.q-list { margin: 0; padding-left: 20px; }
-.q-list li { margin-bottom: 6px; }
-.q-vocab { margin: 0; }
-.q-vocab dt { font-weight: 700; color: var(--accent); margin-top: 8px; }
-.q-vocab dd { margin: 0; color: var(--muted); font-size: 14px; }
+.q-task { font-size: 16px; line-height: 1.5; margin: 0; }
+.q-target { margin: 6px 0 0; color: var(--accent); font-weight: 700; font-size: 15px; }
+.q-list { margin: 0; padding-left: 18px; font-size: 15px; line-height: 1.45; }
+.q-list li { margin-bottom: 4px; }
+.q-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.q-chips span {
+  font-size: 13px; padding: 3px 10px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
 
 .write-pane { display: flex; flex-direction: column; min-width: 0; }
 .write-pane .steps { margin-bottom: 12px; }

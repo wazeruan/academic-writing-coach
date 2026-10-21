@@ -97,12 +97,8 @@ function renderHeader() {
   $("level").replaceChildren(...levels.map((name) =>
     el("option", { value: name, selected: name === level, text: capitalise(name) })
   ));
-  $("eyebrow").textContent = `Today's challenge · ${date}`;
+  $("eyebrow").textContent = `Focus: ${focus.title}`;
   $("title").textContent = challenge.title;
-  const [low, high] = targetRange();
-  const scenario = (challenge.scenario || "writing").replaceAll("_", " ");
-  $("meta").textContent = `${scenario} · ${low}–${high} words`;
-  $("focus").textContent = `Focus skill: ${focus.title}. ${focus.skill}`;
   showNotice(source === "template"
     ? "The local model is offline, so this challenge came from the built-in template. Start the LM Studio server to get AI challenges and feedback."
     : "");
@@ -112,20 +108,15 @@ function renderHeader() {
 function renderQuestion(challenge) {
   const [low, high] = targetRange();
   $("question-body").replaceChildren(
-    el("h3", { text: "Task" }),
     el("p", { class: "q-task", text: challenge.task }),
-    el("p", { class: "q-target", text: `Write ${low}–${high} words` }),
-    el("h3", { text: "Situation" }),
-    el("p", { text: challenge.situation }),
+    el("p", { class: "q-target", text: `${low}–${high} words` }),
     el("h3", { text: "Requirements" }),
     el("ul", { class: "q-list" }, challenge.requirements.map((rule) => el("li", { text: rule }))),
-    el("h3", { text: "Background facts to use" }),
+    el("h3", { text: "Facts to use" }),
     el("ul", { class: "q-list" }, challenge.background.map((fact) => el("li", { text: fact }))),
-    el("h3", { text: "Key vocabulary" }),
-    el("dl", { class: "q-vocab" }, (challenge.key_vocabulary || []).flatMap((item) => [
-      el("dt", { text: item.term }),
-      el("dd", { text: item.meaning }),
-    ])),
+    el("h3", { text: "Vocabulary" }),
+    el("div", { class: "q-chips" }, (challenge.key_vocabulary || []).map((item) =>
+      el("span", { title: item.meaning, text: item.term }))),
   );
 }
 
@@ -152,7 +143,6 @@ function goToStep(index) {
 function stepPlan(challenge) {
   return [
     el("h2", { text: "Plan" }),
-    el("p", { class: "meta", text: "Outline the parts before you write. The teacher reads this too." }),
     el("ol", { class: "hints" }, challenge.plan_hints.map((hint) => el("li", { text: hint }))),
     el("textarea", {
       id: "plan",
@@ -198,7 +188,6 @@ function stepCheck(challenge) {
     el("label", { class: "check" }, el("input", { type: "checkbox" }), el("span", { text: rule })));
   return [
     el("h2", { text: "Check" }),
-    el("p", { class: "meta", text: "Tick each requirement you believe you met. The teacher checks them too." }),
     boxes,
     el("div", { class: "row" },
       el("span", { class: "wc", text: state.submitHint || `Minimum ${state.data.min_words} words to submit.` }),
