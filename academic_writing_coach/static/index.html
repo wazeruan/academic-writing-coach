@@ -24,21 +24,21 @@
   <main class="container">
     <div class="notice" id="notice" hidden></div>
 
-    <div id="today-view">
-      <section class="card challenge-head" id="challenge-head">
+    <div id="today-view" class="daily">
+      <!-- Left: the question, always visible while you plan and write. -->
+      <aside class="card question-pane" aria-label="Question">
         <p class="eyebrow" id="eyebrow">Today's challenge</p>
         <h1 id="title">Loading…</h1>
         <p class="meta" id="meta"></p>
         <p class="focus" id="focus"></p>
-      </section>
+        <div id="question-body"></div>
+      </aside>
 
-      <details class="card task-band" id="brief">
-        <summary>Your task</summary>
-        <div id="brief-body"></div>
-      </details>
-
-      <nav class="steps" id="steps" aria-label="Writing steps"></nav>
-      <section class="card panel" id="panel" aria-live="polite"></section>
+      <!-- Right: the work. Tabs on top, the writing area fills the rest. -->
+      <div class="write-pane">
+        <nav class="steps" id="steps" aria-label="Writing steps"></nav>
+        <section class="card panel" id="panel" aria-live="polite"></section>
+      </div>
     </div>
 
     <div id="learn-view" hidden>

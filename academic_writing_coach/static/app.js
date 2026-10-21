@@ -1,13 +1,18 @@
-// Academic Writing Coach: a Learn course of ordered units, plus a five-step daily challenge. Graded by a local model.
+// Academic Writing Coach: a Learn course of ordered units, plus a daily challenge. Graded by a local model.
 "use strict";
 
-const STEP_NAMES = ["Understand", "Plan", "Write", "Check", "Feedback"];
+// The question stays on the left at all times. The work on the right moves through these four tabs.
+const STEP_NAMES = ["Plan", "Write", "Check", "Feedback"];
+const PLAN = 0;
+const WRITE = 1;
+const CHECK = 2;
+const FEEDBACK = 3;
 const MIN_WORDS = 30; // Matches the server's minimum for a submission.
 // `plan` and `draft` hold the live text; the server copy is updated by autosave.
 const state = {
   view: "today",
   data: null,
-  step: 0,
+  step: PLAN,
   plan: "",
   draft: "",
   saveTimer: null,
@@ -96,17 +101,38 @@ function renderHeader() {
   $("title").textContent = challenge.title;
   const [low, high] = targetRange();
   const scenario = (challenge.scenario || "writing").replaceAll("_", " ");
-  $("meta").textContent = `${scenario} · target ${low}–${high} words`;
+  $("meta").textContent = `${scenario} · ${low}–${high} words`;
   $("focus").textContent = `Focus skill: ${focus.title}. ${focus.skill}`;
   showNotice(source === "template"
     ? "The local model is offline, so this challenge came from the built-in template. Start the LM Studio server to get AI challenges and feedback."
     : "");
 }
 
+// The question: always visible on the left, so the task is in view while you plan and write.
+function renderQuestion(challenge) {
+  const [low, high] = targetRange();
+  $("question-body").replaceChildren(
+    el("h3", { text: "Task" }),
+    el("p", { class: "q-task", text: challenge.task }),
+    el("p", { class: "q-target", text: `Write ${low}–${high} words` }),
+    el("h3", { text: "Situation" }),
+    el("p", { text: challenge.situation }),
+    el("h3", { text: "Requirements" }),
+    el("ul", { class: "q-list" }, challenge.requirements.map((rule) => el("li", { text: rule }))),
+    el("h3", { text: "Background facts to use" }),
+    el("ul", { class: "q-list" }, challenge.background.map((fact) => el("li", { text: fact }))),
+    el("h3", { text: "Key vocabulary" }),
+    el("dl", { class: "q-vocab" }, (challenge.key_vocabulary || []).flatMap((item) => [
+      el("dt", { text: item.term }),
+      el("dd", { text: item.meaning }),
+    ])),
+  );
+}
+
 function renderSteps() {
   const hasFeedback = Boolean(state.data.latest);
   $("steps").replaceChildren(...STEP_NAMES.map((name, index) => {
-    const done = index < state.step || (index === 4 && hasFeedback);
+    const done = index < state.step || (index === FEEDBACK && hasFeedback);
     const classes = ["step-btn", index === state.step ? "active" : "", done ? "done" : ""].join(" ").trim();
     return el("button", {
       class: classes,
@@ -118,44 +144,29 @@ function renderSteps() {
 }
 
 function goToStep(index) {
-  if (index === 4 && !state.data.latest) return;
+  if (index === FEEDBACK && !state.data.latest) return;
   state.step = index;
   render();
 }
 
-function stepUnderstand(challenge) {
-  return [
-    el("h2", { text: "1. Understand the situation" }),
-    el("p", { text: challenge.situation }),
-    el("div", { class: "brief" }, el("strong", { text: "Your task" }), el("p", { text: challenge.task })),
-    el("h2", { text: "Background facts to use" }),
-    el("ul", { class: "list" }, challenge.background.map((fact) => el("li", { text: fact }))),
-    el("h2", { text: "Key vocabulary", style: "margin-top:16px" }),
-    el("div", { class: "vocab" }, (challenge.key_vocabulary || []).map((item) =>
-      el("div", {}, el("strong", { text: item.term }), el("span", { text: item.meaning })))),
-    el("div", { class: "row" },
-      el("span", { class: "wc", text: "Read the task, then plan." }),
-      el("button", { class: "btn", type: "button", onclick: () => goToStep(1) }, "Next: Plan")),
-  ];
-}
-
 function stepPlan(challenge) {
   return [
-    el("h2", { text: "2. Plan your structure" }),
+    el("h2", { text: "Plan" }),
     el("p", { class: "meta", text: "Outline the parts before you write. The teacher reads this too." }),
     el("ol", { class: "hints" }, challenge.plan_hints.map((hint) => el("li", { text: hint }))),
     el("textarea", {
       id: "plan",
+      class: "plan",
       placeholder: "One line per paragraph or idea…",
       oninput: (event) => onEdit("plan", event.target.value),
     }, state.plan),
     el("div", { class: "row" },
-      el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(0) }, "Back"),
-      el("button", { class: "btn", type: "button", onclick: () => goToStep(2) }, "Next: Write")),
+      el("span", { class: "saved", id: "saved", text: state.saveStatus }),
+      el("button", { class: "btn", type: "button", onclick: () => goToStep(WRITE) }, "Next: Write")),
   ];
 }
 
-function stepWrite(challenge) {
+function stepWrite() {
   const [low, high] = targetRange();
   const count = el("span", { class: "wc", id: "wc" });
   const writeNode = el("textarea", {
@@ -165,13 +176,12 @@ function stepWrite(challenge) {
     oninput: (event) => onEdit("draft", event.target.value),
   }, state.draft);
   return [
-    el("h2", { text: "3. Write" }),
-    el("p", { class: "meta", text: `Aim for ${low}–${high} words. Use the vocabulary and background facts.` }),
+    el("h2", { text: "Write" }),
     writeNode,
     el("div", { class: "row" },
       count,
       el("span", { class: "saved", id: "saved", text: state.saveStatus }),
-      el("button", { class: "btn", type: "button", onclick: () => goToStep(3) }, "Next: Check")),
+      el("button", { class: "btn", type: "button", onclick: () => goToStep(CHECK) }, "Next: Check")),
     updateCount(count, low, high),
   ];
 }
@@ -187,8 +197,8 @@ function stepCheck(challenge) {
   const boxes = challenge.requirements.map((rule) =>
     el("label", { class: "check" }, el("input", { type: "checkbox" }), el("span", { text: rule })));
   return [
-    el("h2", { text: "4. Check against the requirements" }),
-    el("p", { class: "meta", text: "Tick each item you believe you met. The teacher checks them too." }),
+    el("h2", { text: "Check" }),
+    el("p", { class: "meta", text: "Tick each requirement you believe you met. The teacher checks them too." }),
     boxes,
     el("div", { class: "row" },
       el("span", { class: "wc", text: state.submitHint || `Minimum ${state.data.min_words} words to submit.` }),
@@ -202,15 +212,15 @@ function stepFeedback() {
   const latest = state.data.latest;
   if (!latest) {
     return [
-      el("h2", { text: "5. Feedback" }),
-      el("p", { text: "Submit your text in step 4 to see the teacher's feedback." }),
+      el("h2", { text: "Feedback" }),
+      el("p", { text: "Submit your text in the Check tab to see the teacher's feedback." }),
     ];
   }
   return [
-    el("h2", { text: "5. Feedback" }),
+    el("h2", { text: "Feedback" }),
     feedbackNodes(latest),
     el("div", { class: "row" },
-      el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(2) }, "Revise my draft")),
+      el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(WRITE) }, "Revise my draft")),
   ];
 }
 
@@ -286,7 +296,7 @@ async function submitDraft() {
     state.data.progress = result.progress;
     state.data.latest = { overall: result.overall, xp: result.xp, feedback: result.feedback };
     state.data.submissions.push({ id: result.submission_id, overall: result.overall, xp: result.xp });
-    if (state.step === 3) state.step = 4; // Respect a step the user moved to while grading.
+    if (state.step === CHECK) state.step = FEEDBACK; // Respect a tab the user moved to while grading.
     showNotice(result.unit_passed ? "Today's writing passed the focus unit. It is marked complete in Learn." : "");
   } catch (error) {
     showNotice(error.message);
@@ -296,35 +306,12 @@ async function submitDraft() {
   }
 }
 
-// The task brief stays visible on every step, so the question is in view while planning and writing.
-function renderBrief(challenge) {
-  const [low, high] = targetRange();
-  $("brief-body").replaceChildren(
-    el("div", { class: "tb-grid" },
-      el("div", { class: "tb-col" },
-        el("strong", { text: "Task" }),
-        el("p", { class: "task-text", text: challenge.task }),
-        el("p", { class: "brief-target", text: `Target ${low}–${high} words` })),
-      el("div", { class: "tb-col" },
-        el("strong", { text: "Requirements" }),
-        el("ul", {}, challenge.requirements.map((rule) => el("li", { text: rule })))),
-      el("div", { class: "tb-col" },
-        el("strong", { text: "Background facts" }),
-        el("ul", {}, challenge.background.map((fact) => el("li", { text: fact }))),
-        el("strong", { text: "Key vocabulary" }),
-        el("div", { class: "brief-chips" }, (challenge.key_vocabulary || []).map((item) =>
-          el("span", { title: item.meaning, text: item.term }))))),
-  );
-  // Wide screens keep the brief open; phones start with it folded to save space.
-  if (window.matchMedia("(min-width: 900px)").matches) $("brief").open = true;
-}
-
 function renderDaily() {
   renderHeader();
   renderSteps();
   const challenge = state.data.challenge;
-  renderBrief(challenge);
-  const builders = [stepUnderstand, stepPlan, stepWrite, stepCheck, stepFeedback];
+  renderQuestion(challenge);
+  const builders = [stepPlan, stepWrite, stepCheck, stepFeedback];
   $("panel").replaceChildren(...builders[state.step](challenge).flat().filter(Boolean));
 }
 
@@ -493,7 +480,7 @@ async function loadToday() {
   state.data = await api("/api/today");
   state.plan = state.data.draft.plan;
   state.draft = state.data.draft.draft;
-  state.step = state.draft ? 2 : 0;
+  state.step = state.draft ? WRITE : PLAN;
   render();
 }
 

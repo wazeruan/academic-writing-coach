@@ -278,6 +278,41 @@ textarea.draft { min-height: 320px; }
   .compare { grid-template-columns: 1fr; }
 }
 
+/* Daily page: the question on the left, the work on the right. */
+.daily { display: grid; gap: 16px; }
+.question-pane h1 { font-size: 22px; }
+.question-pane h3 {
+  margin: 18px 0 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--muted);
+}
+.q-task { font-size: 18px; line-height: 1.6; margin: 0; }
+.q-target { margin: 8px 0 0; color: var(--accent); font-weight: 700; }
+.q-list { margin: 0; padding-left: 20px; }
+.q-list li { margin-bottom: 6px; }
+.q-vocab { margin: 0; }
+.q-vocab dt { font-weight: 700; color: var(--accent); margin-top: 8px; }
+.q-vocab dd { margin: 0; color: var(--muted); font-size: 14px; }
+
+.write-pane { display: flex; flex-direction: column; min-width: 0; }
+.write-pane .steps { margin-bottom: 12px; }
+.write-pane .panel { flex: 1; display: flex; flex-direction: column; margin-bottom: 0; }
+.write-pane .panel textarea { flex: 1; min-height: 220px; }
+
+@media (min-width: 900px) {
+  .daily {
+    grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+    height: calc(100vh - 150px);
+    min-height: 560px;
+  }
+  /* Both columns scroll on their own, so the question and the writing area stay on screen together. */
+  .question-pane { margin-bottom: 0; overflow-y: auto; }
+  .write-pane { min-height: 0; }
+  .write-pane .panel { min-height: 0; overflow-y: auto; }
+}
+
 @media (max-width: 560px) {
   .steps { grid-template-columns: repeat(5, 1fr); }
   .step-btn { font-size: 12px; }
