@@ -296,10 +296,29 @@ async function submitDraft() {
   }
 }
 
+// The task brief stays visible on every step, so the question is in view while planning and writing.
+function renderBrief(challenge) {
+  const [low, high] = targetRange();
+  $("brief-body").replaceChildren(
+    el("p", { text: challenge.task }),
+    el("p", { class: "brief-target", text: `Target ${low}–${high} words` }),
+    el("strong", { text: "Requirements" }),
+    el("ul", {}, challenge.requirements.map((rule) => el("li", { text: rule }))),
+    el("strong", { text: "Background facts" }),
+    el("ul", {}, challenge.background.map((fact) => el("li", { text: fact }))),
+    el("strong", { text: "Key vocabulary" }),
+    el("div", { class: "brief-chips" }, (challenge.key_vocabulary || []).map((item) =>
+      el("span", { title: item.meaning, text: item.term }))),
+  );
+  // Wide screens keep the brief open; phones start with it folded to save space.
+  if (window.matchMedia("(min-width: 900px)").matches) $("brief").open = true;
+}
+
 function renderDaily() {
   renderHeader();
   renderSteps();
   const challenge = state.data.challenge;
+  renderBrief(challenge);
   const builders = [stepUnderstand, stepPlan, stepWrite, stepCheck, stepFeedback];
   $("panel").replaceChildren(...builders[state.step](challenge).flat().filter(Boolean));
 }

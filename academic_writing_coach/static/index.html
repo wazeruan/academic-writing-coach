@@ -32,9 +32,17 @@
         <p class="focus" id="focus"></p>
       </section>
 
-      <nav class="steps" id="steps" aria-label="Writing steps"></nav>
+      <div class="workspace">
+        <details class="card brief-side" id="brief">
+          <summary>Your task</summary>
+          <div id="brief-body"></div>
+        </details>
 
-      <section class="card panel" id="panel" aria-live="polite"></section>
+        <div class="work">
+          <nav class="steps" id="steps" aria-label="Writing steps"></nav>
+          <section class="card panel" id="panel" aria-live="polite"></section>
+        </div>
+      </div>
     </div>
 
     <div id="learn-view" hidden>
