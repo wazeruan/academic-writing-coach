@@ -172,3 +172,18 @@ def test_post_practice_submit_with_short_text_returns_400(server):
     )
     assert status == 400
     assert "at least 30 words" in payload["error"]
+
+
+FRONT_END_IDS = (
+    "eyebrow", "title", "question", "question-body", "q-toggle", "steps", "panel", "stats",
+    "level", "llm-status", "notice", "today-view", "learn-view", "learn-panel",
+)
+
+
+def test_index_page_contains_every_id_the_front_end_uses(server):
+    status, ctype, data = _request(server, "GET", "/")
+    assert status == 200
+    assert ctype.startswith("text/html")
+    html = data.decode("utf-8")
+    missing = [element_id for element_id in FRONT_END_IDS if f'id="{element_id}"' not in html]
+    assert missing == []

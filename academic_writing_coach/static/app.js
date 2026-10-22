@@ -128,9 +128,10 @@ function renderSteps() {
     return el("button", {
       class: classes,
       type: "button",
+      disabled: index === FEEDBACK && !hasFeedback,
       "aria-current": index === state.step ? "step" : false,
       onclick: () => goToStep(index),
-    }, el("span", { class: "num", text: String(index + 1) }), name);
+    }, el("span", { class: "num", text: String(index + 1) }), el("span", { class: "label", text: name }));
   }));
 }
 
@@ -142,7 +143,6 @@ function goToStep(index) {
 
 function stepPlan(challenge) {
   return [
-    el("h2", { text: "Plan" }),
     el("ol", { class: "hints" }, challenge.plan_hints.map((hint) => el("li", { text: hint }))),
     el("textarea", {
       id: "plan",
@@ -159,6 +159,7 @@ function stepPlan(challenge) {
 function stepWrite() {
   const [low, high] = targetRange();
   const count = el("span", { class: "wc", id: "wc" });
+  const meter = el("div", { class: "meter", id: "meter" }, el("div"));
   const writeNode = el("textarea", {
     id: "draft",
     class: "draft",
@@ -166,20 +167,25 @@ function stepWrite() {
     oninput: (event) => onEdit("draft", event.target.value),
   }, state.draft);
   return [
-    el("h2", { text: "Write" }),
     writeNode,
     el("div", { class: "row" },
-      count,
-      el("span", { class: "saved", id: "saved", text: state.saveStatus }),
+      el("div", { class: "footer-left" },
+        count, meter, el("span", { class: "saved", id: "saved", text: state.saveStatus })),
       el("button", { class: "btn", type: "button", onclick: () => goToStep(CHECK) }, "Next: Check")),
-    updateCount(count, low, high),
+    updateCount(count, low, high, meter),
   ];
 }
 
-function updateCount(node, low, high) {
+// Shows words against the target range, with a thin progress bar that turns green inside it.
+function updateCount(node, low, high, meter = $("meter")) {
   const words = wordCount(state.draft);
-  node.textContent = `${words} words (target ${low}–${high})`;
-  node.classList.toggle("ok", words >= low && words <= high);
+  const inRange = words >= low && words <= high;
+  node.textContent = `${words} / ${low}–${high} words`;
+  node.classList.toggle("ok", inRange);
+  if (meter) {
+    meter.classList.toggle("ok", inRange);
+    meter.firstChild.style.width = high > 0 ? `${Math.min(100, (words / high) * 100)}%` : "0%";
+  }
   return null;
 }
 
@@ -187,7 +193,7 @@ function stepCheck(challenge) {
   const boxes = challenge.requirements.map((rule) =>
     el("label", { class: "check" }, el("input", { type: "checkbox" }), el("span", { text: rule })));
   return [
-    el("h2", { text: "Check" }),
+    el("h2", { text: "Did you meet each requirement?" }),
     boxes,
     el("div", { class: "row" },
       el("span", { class: "wc", text: state.submitHint || `Minimum ${state.data.min_words} words to submit.` }),
@@ -206,7 +212,6 @@ function stepFeedback() {
     ];
   }
   return [
-    el("h2", { text: "Feedback" }),
     feedbackNodes(latest),
     el("div", { class: "row" },
       el("button", { class: "btn secondary", type: "button", onclick: () => goToStep(WRITE) }, "Revise my draft")),
@@ -223,19 +228,20 @@ function feedbackNodes(result) {
       el("div", { class: "bar" }, el("div", { style: `width:${value * 20}%` })));
   });
   return el("div", {},
-    el("p", {}, el("strong", { text: `Overall ${result.overall}/100` }), ` · +${result.xp} XP`),
+    el("div", { class: "score-head" },
+      el("span", { class: "big", text: String(result.overall) }),
+      el("span", { class: "of", text: `/ 100 · +${result.xp} XP` })),
     el("div", { class: "score" }, scoreRows),
-    fb.strengths.length ? el("div", {}, el("h2", { text: "What works" }),
+    fb.next_focus ? el("p", { class: "brief" }, el("strong", { text: "Next focus: " }), fb.next_focus) : null,
+    fb.strengths.length ? el("div", { class: "fb-section" }, el("h2", { text: "What works" }),
       el("ul", { class: "list" }, fb.strengths.map((s) => el("li", { text: s })))) : null,
-    fb.corrections.length ? el("div", {}, el("h2", { text: "Corrections" }), fb.corrections.map((c) =>
+    fb.corrections.length ? el("div", { class: "fb-section" }, el("h2", { text: "Corrections" }), fb.corrections.map((c) =>
       el("div", { class: "correction" },
         el("span", { class: "old", text: c.original }), " → ", el("span", { class: "new", text: c.revised }),
         c.explanation ? el("p", { text: c.explanation }) : null))) : null,
-    fb.improved_version ? el("div", {}, el("h2", { text: "Model version" }),
+    fb.mini_exercise ? el("div", { class: "brief" }, el("strong", { text: "Mini exercise: " }), fb.mini_exercise) : null,
+    fb.improved_version ? el("div", { class: "fb-section" }, el("h2", { text: "Model version" }),
       el("div", { class: "improved", text: fb.improved_version })) : null,
-    fb.next_focus ? el("p", {}, el("strong", { text: "Next focus: " }), fb.next_focus) : null,
-    fb.mini_exercise ? el("div", { class: "brief" }, el("strong", { text: "Mini exercise" }),
-      el("p", { text: fb.mini_exercise })) : null,
   );
 }
 
@@ -329,14 +335,15 @@ function renderLearn() {
       disabled: unit.status === "locked",
       onclick: () => openUnit(unit.id),
     },
-      el("div", { class: "unit-top" }, el("span", { class: "unit-num", text: String(unit.index + 1) }),
+      el("span", { class: "unit-top" }, el("span", { class: "unit-num", text: String(unit.index + 1) }),
         el("strong", { text: unit.title }), el("span", { class: "badge", text: badge })),
-      el("p", { class: "meta", text: unit.skill + score }));
+      el("span", { class: "meta unit-skill", text: unit.skill + score }));
   });
   $("learn-panel").replaceChildren(
-    el("h2", { text: `Learn: ${completed} of ${total} units complete` }),
-    el("p", { class: "meta", text: `Units unlock in order. Pass a practice task with ${pass_score}/100 or more to complete a unit. Your daily challenge focuses on the current unit.` }),
-    cards,
+    el("div", { class: "learn-head" },
+      el("h2", { text: `${completed} of ${total} units complete` }),
+      el("p", { class: "meta", text: `Units unlock in order. Score ${pass_score}/100 or more on a practice to pass. Today's challenge follows the current unit.` })),
+    el("div", { class: "unit-grid" }, cards),
   );
 }
 
@@ -380,9 +387,11 @@ function renderUnit() {
     : el("div", { class: "row" },
       el("span", { class: "wc", text: `Pass with ${unit.pass_score}/100 or more.` }),
       el("button", { class: "btn", type: "button", onclick: startPractice }, "Start practice"));
+  // Lesson on the left, practice on the right, so the rule stays in view while you write.
   $("learn-panel").replaceChildren(
-    el("div", { class: "card" }, back, ...lesson, practiceSection),
-    el("div", { class: "card" }, el("h2", { text: "Practice" }), practice),
+    el("div", { class: "unit-layout" },
+      el("div", { class: "card scroll" }, back, ...lesson, practiceSection),
+      el("div", { class: "card scroll" }, el("h2", { text: "Practice" }), practice)),
   );
 }
 
@@ -465,11 +474,11 @@ function render() {
   if (state.view === "today" && state.data) renderDaily();
 }
 
-async function loadToday() {
+async function loadToday({ keepStep = false } = {}) {
   state.data = await api("/api/today");
   state.plan = state.data.draft.plan;
   state.draft = state.data.draft.draft;
-  state.step = state.draft ? WRITE : PLAN;
+  if (!keepStep) state.step = state.draft ? WRITE : PLAN;
   render();
 }
 
@@ -493,14 +502,23 @@ $("level").addEventListener("change", async (event) => {
     await saveDraft(); // Keep unsaved words before the page reloads today's challenge.
     await api("/api/level", { method: "POST", body: { level: event.target.value } });
     $("title").textContent = "Preparing today's challenge…";
-    await loadToday();
+    await loadToday({ keepStep: true });
   } catch (error) {
     showNotice(error.message);
   }
 });
 
+// On phones the question can fold away, to give the writing area the full screen.
+$("q-toggle").addEventListener("click", () => {
+  const collapsed = $("question").classList.toggle("collapsed");
+  $("q-toggle").setAttribute("aria-expanded", String(!collapsed));
+  $("q-toggle").textContent = collapsed ? "Show task" : "Hide task";
+});
+
 $("title").textContent = "Preparing today's challenge…";
+$("question-body").textContent = "The local model is writing today's challenge. This can take up to a minute.";
 loadToday().catch((error) => {
+  $("question-body").textContent = "";
   $("title").textContent = "Could not load today's challenge";
   showNotice(error.message);
 });

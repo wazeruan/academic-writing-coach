@@ -8,7 +8,11 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">Academic Writing Coach</div>
+    <div class="brand">Writing Coach</div>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab active" type="button" role="tab" data-view="today" aria-selected="true">Today</button>
+      <button class="tab" type="button" role="tab" data-view="learn" aria-selected="false">Learn</button>
+    </nav>
     <div class="stats" id="stats" aria-live="polite"></div>
     <div class="controls">
       <select id="level" aria-label="Difficulty"></select>
@@ -16,27 +20,27 @@
     </div>
   </header>
 
-  <nav class="tabs" role="tablist" aria-label="Sections">
-    <button class="tab active" type="button" role="tab" data-view="today" aria-selected="true">Today</button>
-    <button class="tab" type="button" role="tab" data-view="learn" aria-selected="false">Learn</button>
-  </nav>
+  <div class="notice" id="notice" hidden></div>
 
-  <main class="container">
-    <div class="notice" id="notice" hidden></div>
-
+  <main class="app">
     <div id="today-view" class="daily">
       <!-- Left: the question, always visible while you plan and write. -->
-      <aside class="card question-pane" aria-label="Question">
-        <p class="eyebrow" id="eyebrow">Today's challenge</p>
-        <h1 id="title">Loading…</h1>
+      <aside class="card question-pane" id="question" aria-label="Question">
+        <div class="q-head">
+          <div>
+            <p class="eyebrow" id="eyebrow">Today's challenge</p>
+            <h1 id="title">Loading…</h1>
+          </div>
+          <button class="q-toggle" id="q-toggle" type="button" aria-expanded="true" aria-controls="question-body">Hide task</button>
+        </div>
         <div id="question-body"></div>
       </aside>
 
       <!-- Right: the work. Tabs on top, the writing area fills the rest. -->
-      <div class="write-pane">
+      <section class="write-pane">
         <nav class="steps" id="steps" aria-label="Writing steps"></nav>
-        <section class="card panel" id="panel" aria-live="polite"></section>
-      </div>
+        <div class="card panel" id="panel" aria-live="polite"></div>
+      </section>
     </div>
 
     <div id="learn-view" hidden>
