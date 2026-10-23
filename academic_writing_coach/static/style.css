@@ -286,6 +286,32 @@ label.check { display: flex; gap: 10px; align-items: flex-start; padding: 4px 0;
 label.check input { margin-top: 4px; accent-color: var(--accent); }
 
 .meta { color: var(--muted); font-size: 14px; }
+
+/* Loading: a spinner and a seconds counter while the local model works. */
+.loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 14px;
+}
+.loading .elapsed { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--muted); }
+.spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation-duration: 2.4s; }
+}
 .error { color: var(--danger); font-weight: 600; }
 
 /* Feedback ------------------------------------------------------------- */

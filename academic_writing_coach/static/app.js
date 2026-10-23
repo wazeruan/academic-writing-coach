@@ -22,6 +22,7 @@ const state = {
   learn: null,       // { overview } from /api/learn
   unit: null,        // unit detail from /api/learn/unit
   practice: null,    // { task, text, result } for the open unit, held in memory
+  practiceLoading: null,  // id of the unit whose exercise the model is writing, if any
 };
 
 const $ = (id) => document.getElementById(id);
@@ -227,7 +228,7 @@ function stepCheck(challenge) {
     el("div", { class: "row" },
       el("span", { class: "wc", text: state.submitHint || `Minimum ${state.data.min_words} words to submit.` }),
       primaryAction(state.busy ? "Grading…" : "Submit to teacher", submitDraft, { disabled: state.busy })),
-    state.busy ? el("p", { class: "meta", text: "A local model can take a minute. Keep this tab open." }) : null,
+    state.busy ? loadingNote("The teacher is grading your text. This usually takes about a minute.") : null,
   ];
 }
 
@@ -420,11 +421,18 @@ function renderUnit() {
   const practiceSection = unit.status === "done" && !state.practice
     ? el("p", { class: "meta", text: `Completed. Best score ${unit.best_overall}/100. You can practise again below.` })
     : null;
+  const loadingHere = state.practiceLoading === unit.id;
   const practice = state.practice
     ? renderPractice(unit)
-    : el("div", { class: "row" },
-      el("span", { class: "wc", text: `Pass with ${unit.pass_score}/100 or more.` }),
-      el("button", { class: "btn", type: "button", onclick: startPractice }, "Start practice"));
+    : [
+      loadingHere
+        ? loadingNote("The local model is writing a new exercise. This usually takes 10–30 seconds.")
+        : el("p", { class: "meta", text: "Start a practice to get a short exercise on this unit's skill." }),
+      el("div", { class: "row" },
+        el("span", { class: "wc", text: `Pass with ${unit.pass_score}/100 or more.` }),
+        el("button", { class: "btn", type: "button", disabled: loadingHere, onclick: startPractice },
+          loadingHere ? "Preparing…" : "Start practice")),
+    ];
   // Lesson on the left, practice on the right, so the rule stays in view while you write.
   $("learn-panel").replaceChildren(
     el("div", { class: "unit-layout" },
@@ -434,13 +442,42 @@ function renderUnit() {
 }
 
 async function startPractice() {
+  const unitId = state.unit.id;
+  if (state.practiceLoading === unitId) return;
+  state.practiceLoading = unitId;
+  renderUnit();
+  // The reply only counts if you are still on the same unit; otherwise it is dropped.
+  const stillHere = () => state.view === "learn" && state.unit && state.unit.id === unitId;
   try {
-    const result = await api("/api/practice/start", { method: "POST", body: { unit_id: state.unit.id } });
-    state.practice = { task: result.task, source: result.source, text: "", result: null, busy: false };
-    renderUnit();
+    const result = await api("/api/practice/start", { method: "POST", body: { unit_id: unitId } });
+    if (stillHere()) {
+      state.practice = { task: result.task, source: result.source, text: "", result: null, busy: false };
+    }
   } catch (error) {
-    showNotice(error.message);
+    if (stillHere()) showNotice(error.message);
+  } finally {
+    if (state.practiceLoading === unitId) state.practiceLoading = null;
+    if (stillHere()) renderUnit();
   }
+}
+
+// A spinner with a live seconds counter, so a slow local model visibly shows it is working.
+function loadingNote(text) {
+  const seconds = el("span", { class: "elapsed", text: "0 s" });
+  const node = el("p", { class: "loading", role: "status" },
+    el("span", { class: "spinner", "aria-hidden": "true" }), el("span", { text }), seconds);
+  const started = Date.now();
+  let attached = false;
+  const timer = setInterval(() => {
+    if (node.isConnected) attached = true;
+    // Stop once the note is replaced, or if it was never shown at all.
+    if ((attached && !node.isConnected) || (!attached && Date.now() - started > 5000)) {
+      clearInterval(timer);
+      return;
+    }
+    seconds.textContent = `${Math.round((Date.now() - started) / 1000)} s`;
+  }, 1000);
+  return node;
 }
 
 function renderPractice(unit) {
@@ -458,6 +495,7 @@ function renderPractice(unit) {
     el("div", { class: "row" }, hint,
       el("button", { class: "btn", type: "button", disabled: practice.busy, onclick: submitPractice },
         practice.busy ? "Grading…" : "Submit practice")),
+    practice.busy ? loadingNote("The teacher is grading your answer. This usually takes about a minute.") : null,
     practice.result ? practiceResultNodes(practice.result, unit) : null,
   ];
   queueMicrotask(updatePracticeCount);
@@ -554,8 +592,12 @@ $("level").addEventListener("change", async (event) => {
     await saveDraft(); // Keep unsaved words before the page reloads today's challenge.
     await api("/api/level", { method: "POST", body: { level: event.target.value } });
     $("title").textContent = "Preparing today's challenge…";
+    $("question-body").replaceChildren(loadingNote("The local model is writing a challenge at the new level."));
     await loadToday({ keepStep: true });
   } catch (error) {
+    // Put back the previous challenge, so the spinner does not keep running.
+    if (state.data) render();
+    else $("question-body").textContent = "";
     showNotice(error.message);
   }
 });
@@ -568,7 +610,7 @@ $("q-toggle").addEventListener("click", () => {
 });
 
 $("title").textContent = "Preparing today's challenge…";
-$("question-body").textContent = "The local model is writing today's challenge. This can take up to a minute.";
+$("question-body").replaceChildren(loadingNote("Loading today's challenge. If the model is writing a new one, this can take up to a minute."));
 loadToday().catch((error) => {
   $("question-body").textContent = "";
   $("title").textContent = "Could not load today's challenge";
