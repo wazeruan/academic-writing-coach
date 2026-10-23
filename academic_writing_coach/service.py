@@ -27,7 +27,8 @@ from .store import Store, streak
 MIN_WORDS_TO_SUBMIT = 30
 MAX_TASK_CHARS = 2000
 TEXT_KEYS = ("title", "situation", "task")
-LIST_KEYS = ("background", "requirements", "plan_hints")
+LIST_KEYS = ("requirements", "plan_hints")
+MIN_NOTES = 6  # Enough raw material to write the whole piece without inventing facts.
 _generation_lock = threading.Lock()
 
 
@@ -35,9 +36,33 @@ def word_count(text: str) -> int:
     return len(text.split())
 
 
+def _valid_note(note: Any) -> bool:
+    return (
+        isinstance(note, dict)
+        and all(isinstance(note.get(key), str) and note[key].strip() for key in ("label", "value"))
+    )
+
+
+def _dedupe_notes(notes: list[Any]) -> list[Any]:
+    """Small models sometimes repeat a note; keep the first copy. Malformed notes are kept for validation to reject."""
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for note in notes:
+        if _valid_note(note):
+            key = (note["label"].strip().lower(), note["value"].strip().lower())
+            if key in seen:
+                continue
+            seen.add(key)
+        unique.append(note)
+    return unique
+
+
 def _valid_challenge(payload: dict[str, Any]) -> bool:
     """Check field types too: the page calls .map() on the list fields."""
     if not all(isinstance(payload.get(key), str) and payload[key].strip() for key in TEXT_KEYS):
+        return False
+    notes = payload.get("notes")
+    if not (isinstance(notes, list) and len(notes) >= MIN_NOTES and all(_valid_note(n) for n in notes)):
         return False
     return all(
         isinstance(payload.get(key), list)
@@ -157,6 +182,9 @@ def _generate_challenge(settings: Settings, store: Store, day: date) -> tuple[di
     except llm.LLMError:
         generated, source = template_challenge(scenario, level, topic), "template"
 
+    # Remove repeated notes before validating, so duplicates cannot hide a short list.
+    if isinstance(generated.get("notes"), list):
+        generated["notes"] = _dedupe_notes(generated["notes"])
     if not _valid_challenge(generated):
         generated, source = template_challenge(scenario, level, topic), "template"
 
@@ -351,7 +379,7 @@ def practice_submit(
         "title": unit.title,
         "situation": "Practice exercise for one Learn unit.",
         "task": task[:MAX_TASK_CHARS] or unit.practice_task,
-        "background": [],
+        "notes": [],
         "requirements": list(unit.checklist),
     }
     graded = _grade(settings, store, exercise, draft, plan)

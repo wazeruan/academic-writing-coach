@@ -158,6 +158,18 @@ select {
 .q-target { margin-top: 6px; color: var(--accent); font-weight: 700; }
 .q-list { padding-left: 18px; line-height: 1.45; }
 .q-list li { margin-bottom: 4px; }
+.q-hint { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+/* Notes read like a lab notebook: a short label column and a terse value column. */
+.q-notes {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.q-notes dt { font-weight: 700; color: var(--accent-strong); }
+.q-notes dd { margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 .q-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .q-chips span {
   font-size: 13px;

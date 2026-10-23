@@ -61,10 +61,10 @@ def test_challenge_for_missing_required_keys_falls_back_to_template(fake_llm, ma
 
 
 def test_challenge_for_rejects_model_challenge_with_wrong_field_types(fake_llm, make_settings, store):
-    # app.js calls .map() on background, requirements and plan_hints, so a string here
+    # app.js calls .map() on notes, requirements and plan_hints, so a string here
     # would break the page. The service should not accept or cache it.
     broken = valid_challenge()
-    broken["background"] = "one long string instead of a list"
+    broken["notes"] = "one long string instead of a list"
     fake_llm.set_replies(json.dumps(broken))
 
     _, source = service.challenge_for(make_settings(fake_llm.url), store, DAY)

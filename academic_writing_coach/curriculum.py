@@ -93,7 +93,7 @@ def generation_messages(
 ) -> list[dict[str, str]]:
     schema = (
         '{"title": str, "situation": str, "task": str, '
-        '"background": [str, str, str], "requirements": [str, str, str, str], '
+        '"notes": [{"label": str, "value": str}, ...6-9 items], "requirements": [str, str, str, str], '
         '"key_vocabulary": [{"term": str, "meaning": str}, ...5 items], '
         '"plan_hints": [str, str, str, str]}'
     )
@@ -111,10 +111,18 @@ def generation_messages(
         + "\nRules:\n"
         "- 'situation' is 2-3 sentences that set the scene and the audience (reviewers, a team lead, or readers of a venue).\n"
         "- 'task' is one clear instruction telling the student what to write.\n"
-        "- 'background' gives 3 short facts the student must use. Invent plausible but fictional "
-        "technical details: dataset or system names, metrics, and concrete numbers.\n"
+        "- 'notes' are the raw project notes the student turns into prose, like a lab notebook or "
+        "an engineer's scratch notes. Give 6-9 notes that cover everything this genre needs, so the "
+        "student never has to invent facts: what the system or method is and the problem it solves, "
+        "the data (name, size, source, split), the steps or setup, the metrics and concrete numbers, "
+        "the baseline or alternative, and one complication or limitation. Invent plausible but "
+        "fictional names and numbers.\n"
+        "- Each note has a short 'label' (for example 'Data', 'Step 2', 'Baseline', 'Result') and a "
+        "'value' written as a terse fragment, NOT a sentence: no subject-verb sentences, use symbols "
+        "and abbreviations. Good: 'CI logs, 3 repos, Jan-Jun 2025; 10M runs/mo'. Bad: 'The system "
+        "processes 10 million test runs per month.' The student must write the sentences.\n"
         "- 'requirements' are checkable rules of at most 12 words each, for example 'Mention one limitation.'\n"
-        "- 'background' facts are at most 20 words each.\n"
+        "- Never mention these field names (such as plan_hints or notes) in any text the student reads.\n"
         "- 'plan_hints' are the 4 parts the student should outline before drafting.\n\n"
         f"Return JSON matching: {schema}"
     )
@@ -147,10 +155,14 @@ def template_challenge(scenario: Scenario, level: str, topic: str) -> dict:
             "Your readers are reviewers or engineers from a neighbouring area."
         ),
         "task": scenario.purpose,
-        "background": [
-            "The new method improves the main metric from 71.2 to 75.8 on the primary benchmark.",
-            "The strongest baseline is 12% faster at inference time.",
-            "Results were averaged over three random seeds; one dataset showed no gain.",
+        "notes": [
+            {"label": "Problem", "value": f"{topic}: current approach slow + unreliable on new data"},
+            {"label": "Our method", "value": "lightweight adapter on top of existing model; ~2% extra params"},
+            {"label": "Data", "value": "3 public benchmarks + 1 internal set (40k examples, 80/10/10 split)"},
+            {"label": "Setup", "value": "1x A100, 3 seeds, early stopping on val loss"},
+            {"label": "Baseline", "value": "strongest prior method; 12% faster at inference"},
+            {"label": "Result", "value": "main metric 71.2 -> 75.8 (+-0.6 over seeds)"},
+            {"label": "Mixed result", "value": "no gain on internal set; label noise suspected"},
         ],
         "requirements": [
             "Report the main result as a number with a comparison.",
@@ -187,6 +199,14 @@ GRADING_RUBRIC = {
 }
 
 
+def challenge_notes(challenge: dict) -> list[str]:
+    """The challenge's notes as 'Label: value' lines. Older saved challenges have 'background' sentences instead."""
+    notes = challenge.get("notes")
+    if isinstance(notes, list) and notes:
+        return [f"{note.get('label', '')}: {note.get('value', '')}" for note in notes if isinstance(note, dict)]
+    return [str(fact) for fact in challenge.get("background", [])]
+
+
 # JSON schemas sent as structured output, so small local models return the exact shape we parse.
 _STRINGS = {"type": "array", "items": {"type": "string"}}
 
@@ -196,7 +216,16 @@ CHALLENGE_SCHEMA = {
         "title": {"type": "string"},
         "situation": {"type": "string"},
         "task": {"type": "string"},
-        "background": {**_STRINGS, "minItems": 3, "maxItems": 3},
+        "notes": {
+            "type": "array",
+            "minItems": 6,
+            "maxItems": 9,
+            "items": {
+                "type": "object",
+                "properties": {"label": {"type": "string"}, "value": {"type": "string"}},
+                "required": ["label", "value"],
+            },
+        },
         "requirements": {**_STRINGS, "minItems": 3, "maxItems": 4},
         "key_vocabulary": {
             "type": "array",
@@ -210,7 +239,7 @@ CHALLENGE_SCHEMA = {
         },
         "plan_hints": {**_STRINGS, "minItems": 4, "maxItems": 4},
     },
-    "required": ["title", "situation", "task", "background", "requirements", "key_vocabulary", "plan_hints"],
+    "required": ["title", "situation", "task", "notes", "requirements", "key_vocabulary", "plan_hints"],
 }
 
 PRACTICE_SCHEMA = {
@@ -288,7 +317,7 @@ def grading_messages(challenge: dict, draft: str, plan: str, level: str) -> list
         f"Level: {level}\n"
         f"Situation: {challenge.get('situation', '')}\n"
         f"Task: {challenge.get('task', '')}\n"
-        f"Background facts: {'; '.join(challenge.get('background', []))}\n"
+        f"Project notes the student was given: {'; '.join(challenge_notes(challenge))}\n"
         f"Requirements: {'; '.join(challenge.get('requirements', []))}\n\n"
         f"Rubric (score each 1-5):\n{criteria}\n\n"
         f"<student_plan>\n{plan or '(no outline written)'}\n</student_plan>\n\n"

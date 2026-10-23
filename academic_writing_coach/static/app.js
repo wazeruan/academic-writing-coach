@@ -105,6 +105,17 @@ function renderHeader() {
     : "");
 }
 
+// Project notes as a label/value list. Challenges saved before notes existed have 'background' sentences.
+function notesNode(challenge) {
+  if (Array.isArray(challenge.notes) && challenge.notes.length) {
+    return el("dl", { class: "q-notes" }, challenge.notes.flatMap((note) => [
+      el("dt", { text: note.label }),
+      el("dd", { text: note.value }),
+    ]));
+  }
+  return el("ul", { class: "q-list" }, (challenge.background || []).map((fact) => el("li", { text: fact })));
+}
+
 // The question: always visible on the left, so the task is in view while you plan and write.
 function renderQuestion(challenge) {
   const [low, high] = targetRange();
@@ -113,8 +124,9 @@ function renderQuestion(challenge) {
     el("p", { class: "q-target", text: `${low}–${high} words` }),
     el("h3", { text: "Requirements" }),
     el("ul", { class: "q-list" }, challenge.requirements.map((rule) => el("li", { text: rule }))),
-    el("h3", { text: "Facts to use" }),
-    el("ul", { class: "q-list" }, challenge.background.map((fact) => el("li", { text: fact }))),
+    el("h3", { text: "Project notes" }),
+    el("p", { class: "q-hint", text: "Raw notes, not sentences. Turn them into your own prose." }),
+    notesNode(challenge),
     el("h3", { text: "Vocabulary" }),
     el("div", { class: "q-chips" }, (challenge.key_vocabulary || []).map((item) =>
       el("span", { title: item.meaning, text: item.term }))),
