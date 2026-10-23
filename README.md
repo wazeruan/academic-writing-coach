@@ -30,8 +30,8 @@ cd ~/Documents/Projects/academic-writing-coach
 uv sync
 ```
 
-In LM Studio, load an instruction model and start the server (Developer tab, port 1234).
-Then run:
+Start an OpenAI-compatible model server on port 1234: [oMLX](https://github.com/jundot/omlx)
+(recommended on Apple Silicon), LM Studio, or llama.cpp, and load an instruction model. Then run:
 
 ```bash
 COACH_LLM_API_KEY=your-key uv run python -m academic_writing_coach
@@ -39,9 +39,11 @@ COACH_LLM_API_KEY=your-key uv run python -m academic_writing_coach
 
 Open http://127.0.0.1:8765. Leave out `COACH_LLM_API_KEY` if your server does not require one.
 
-The app uses LM Studio's default model unless you set `COACH_LLM_MODEL`, so switching models
-in LM Studio needs no code change. Without a running model the app still opens, with an
-offline challenge and built-in exercises, but it cannot grade.
+The app uses the model your server has loaded unless you set `COACH_LLM_MODEL`. With oMLX it
+reads the loaded model from `/api/status`; with other servers it uses the default model from
+`/health`. It re-checks every 30 seconds, so switching models needs no code change or restart.
+Without a running model the app still opens, with an offline challenge and built-in exercises,
+but it cannot grade.
 
 ## How the app talks to the model
 
@@ -57,7 +59,7 @@ offline challenge and built-in exercises, but it cannot grade.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `COACH_LLM_URL` | `http://localhost:1234/v1` | OpenAI-compatible base URL |
-| `COACH_LLM_MODEL` | server default | Model identifier sent to the server |
+| `COACH_LLM_MODEL` | loaded model | Model identifier sent to the server |
 | `COACH_LLM_API_KEY` | none | Bearer token, if the server requires one |
 | `COACH_LLM_TIMEOUT` | `240` | Seconds to wait for a model reply |
 | `COACH_PORT` | `8765` | Port for the web app |

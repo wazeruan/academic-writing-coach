@@ -34,7 +34,7 @@ class LLMReplyError(LLMError):
 
 # Small per-process caches. Probes are cheap but run on every page load, so cache them briefly.
 _lock = threading.Lock()
-_probes: dict[str, dict[str, Any]] = {}  # base URL -> {"at", "online", "default_model"}
+_probes: dict[str, dict[str, Any]] = {}  # base URL -> {"at", "online", "model"}
 _schema_supported: dict[str, bool] = {}  # base URL -> does the server accept response_format?
 
 
@@ -45,25 +45,52 @@ def _headers(settings: Settings, *, json_body: bool) -> dict[str, str]:
     return headers
 
 
+def _get_json(url: str, settings: Settings) -> Any:
+    request = urllib.request.Request(url, headers=_headers(settings, json_body=False))
+    with urllib.request.urlopen(request, timeout=PROBE_TIMEOUT) as response:
+        return json.load(response)
+
+
+def _pick_model(loaded: Any, default: Any) -> str | None:
+    """Prefer a model that is already loaded (the default, if it is one), so requests never wait for a model swap."""
+    names = [name for name in loaded if isinstance(name, str) and name] if isinstance(loaded, list) else []
+    if default in names:
+        return default
+    if names:
+        return names[0]
+    return default if isinstance(default, str) and default else None
+
+
 def _probe_server(settings: Settings, *, force: bool = False) -> dict[str, Any]:
-    """Check the server once per PROBE_CACHE_SECONDS: is it up, and which model is its default?"""
+    """Check the server once per PROBE_CACHE_SECONDS: is it up, and which model should requests use?
+
+    oMLX reports the models it has loaded at /api/status, so the app follows whatever model you
+    load there. Servers without that route (LM Studio, llama.cpp) fall back to /health's default model.
+    """
     base = settings.llm_base_url.rstrip("/")
     with _lock:
         cached = _probes.get(base)
         if cached and not force and time.monotonic() - cached["at"] < PROBE_CACHE_SECONDS:
             return dict(cached)
-    health_url = base.removesuffix("/v1") + "/health"
-    online, default = False, None
+    root = base.removesuffix("/v1")
+    online, model = False, None
     try:
-        with urllib.request.urlopen(urllib.request.Request(health_url), timeout=PROBE_TIMEOUT) as response:
-            online = True
-            body = json.load(response)
-            default = body.get("default_model") if isinstance(body, dict) else None
+        status = _get_json(root + "/api/status", settings)
+        online = True
+        if isinstance(status, dict):
+            model = _pick_model(status.get("loaded_models"), status.get("default_model"))
     except urllib.error.HTTPError:
-        online = True  # Some servers have no /health route but are up.
+        online = True  # The server answered; it just has no oMLX status route (or needs another key).
     except (urllib.error.URLError, OSError, ValueError):
         online = False
-    result = {"at": time.monotonic(), "online": online, "default_model": default}
+    if online and model is None:
+        try:
+            health = _get_json(root + "/health", settings)
+            if isinstance(health, dict):
+                model = _pick_model(None, health.get("default_model"))
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+    result = {"at": time.monotonic(), "online": online, "model": model}
     with _lock:
         _probes[base] = result
     return dict(result)
@@ -74,10 +101,10 @@ def reachable(settings: Settings) -> bool:
 
 
 def model_name(settings: Settings) -> str:
-    """The configured model, or the server's current default, so switching models needs no restart."""
+    """The configured model, or the one the server has loaded, so switching models needs no restart."""
     if settings.llm_model:
         return settings.llm_model
-    return _probe_server(settings)["default_model"] or "local-model"
+    return _probe_server(settings)["model"] or "local-model"
 
 
 def chat(

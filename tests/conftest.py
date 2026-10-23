@@ -30,6 +30,8 @@ class FakeLLM:
         self.status = 200
         self.raw_body: bytes | None = None  # if set, sent verbatim instead of a chat completion
         self.delay = 0.0  # seconds to wait before answering a chat request
+        self.get_routes: dict[str, tuple[int, object]] = {}  # path -> (status, JSON body); others 404
+        self.get_requests: list[dict] = []  # {"path", "auth"} for every GET
         self.reject_response_format = False  # answer 400 to any request that carries response_format
         self.requests: list[dict] = []
         self._lock = threading.Lock()
@@ -58,6 +60,18 @@ class FakeLLM:
                     data = json.dumps(
                         {"choices": [{"message": {"role": "assistant", "content": content}}]}
                     ).encode("utf-8")
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def do_GET(self) -> None:  # noqa: N802 - http.server naming
+                path = self.path.split("?", 1)[0]
+                with fake._lock:
+                    fake.get_requests.append({"path": path, "auth": self.headers.get("Authorization")})
+                    status, body = fake.get_routes.get(path, (404, {"error": "not found"}))
+                data = json.dumps(body).encode("utf-8")
                 self.send_response(status)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(data)))
