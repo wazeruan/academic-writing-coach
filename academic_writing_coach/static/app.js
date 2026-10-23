@@ -139,6 +139,22 @@ function goToStep(index) {
   if (index === FEEDBACK && !state.data.latest) return;
   state.step = index;
   render();
+  // On desktop, put the cursor in the text box so you can type straight away.
+  // Phones skip this, so the on-screen keyboard does not pop up on every tab change.
+  const box = $("draft") || $("plan");
+  if (box && window.matchMedia("(min-width: 900px)").matches) {
+    box.focus();
+    box.setSelectionRange(box.value.length, box.value.length);
+  }
+}
+
+// Shortcut label for the platform: ⌘ on macOS, Ctrl elsewhere.
+const MOD_KEY = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+
+function primaryAction(label, onclick, { disabled = false } = {}) {
+  return el("div", { class: "actions" },
+    el("kbd", { class: "kbd-hint", title: "Keyboard shortcut", text: `${MOD_KEY} ↵` }),
+    el("button", { class: "btn", type: "button", disabled, onclick }, label));
 }
 
 function stepPlan(challenge) {
@@ -152,8 +168,20 @@ function stepPlan(challenge) {
     }, state.plan),
     el("div", { class: "row" },
       el("span", { class: "saved", id: "saved", text: state.saveStatus }),
-      el("button", { class: "btn", type: "button", onclick: () => goToStep(WRITE) }, "Next: Write")),
+      primaryAction("Next: Write", () => goToStep(WRITE))),
   ];
+}
+
+// While writing, a side rail keeps your plan and the focus unit's checklist in view.
+function writingRail() {
+  const focus = state.data.focus;
+  return el("aside", { class: "rail", "aria-label": "Plan and focus" },
+    el("h3", { text: "Your plan" }),
+    state.plan.trim()
+      ? el("p", { class: "rail-plan", text: state.plan })
+      : el("p", { class: "meta", text: "No plan yet. Add one in the Plan tab." }),
+    el("h3", { text: `Focus: ${focus.title}` }),
+    el("ul", { class: "q-list" }, (focus.checklist || []).map((item) => el("li", { text: item }))));
 }
 
 function stepWrite() {
@@ -164,14 +192,15 @@ function stepWrite() {
     id: "draft",
     class: "draft",
     placeholder: "Write your text here…",
+    spellcheck: "true",
     oninput: (event) => onEdit("draft", event.target.value),
   }, state.draft);
   return [
-    writeNode,
+    el("div", { class: "write-grid" }, el("div", { class: "editor-col" }, writeNode), writingRail()),
     el("div", { class: "row" },
       el("div", { class: "footer-left" },
         count, meter, el("span", { class: "saved", id: "saved", text: state.saveStatus })),
-      el("button", { class: "btn", type: "button", onclick: () => goToStep(CHECK) }, "Next: Check")),
+      primaryAction("Next: Check", () => goToStep(CHECK))),
     updateCount(count, low, high, meter),
   ];
 }
@@ -197,8 +226,7 @@ function stepCheck(challenge) {
     boxes,
     el("div", { class: "row" },
       el("span", { class: "wc", text: state.submitHint || `Minimum ${state.data.min_words} words to submit.` }),
-      el("button", { class: "btn", type: "button", disabled: state.busy, onclick: submitDraft },
-        state.busy ? "Grading…" : "Submit to teacher")),
+      primaryAction(state.busy ? "Grading…" : "Submit to teacher", submitDraft, { disabled: state.busy })),
     state.busy ? el("p", { class: "meta", text: "A local model can take a minute. Keep this tab open." }) : null,
   ];
 }
@@ -227,7 +255,8 @@ function feedbackNodes(result) {
       el("div", { text: `${capitalise(label)}: ${value}/5` }),
       el("div", { class: "bar" }, el("div", { style: `width:${value * 20}%` })));
   });
-  return el("div", {},
+  // Two columns on wide screens: the verdict on the left, the detailed fixes on the right.
+  const verdict = el("div", { class: "fb-col" },
     el("div", { class: "score-head" },
       el("span", { class: "big", text: String(result.overall) }),
       el("span", { class: "of", text: `/ 100 · +${result.xp} XP` })),
@@ -241,7 +270,9 @@ function feedbackNodes(result) {
           el("span", {}, el("strong", { text: r.requirement }), r.note ? ` ${r.note}` : ""))))) : null,
     fb.strengths.length ? el("div", { class: "fb-section" }, el("h2", { text: "What works" }),
       el("ul", { class: "list" }, fb.strengths.map((s) => el("li", { text: s })))) : null,
-    fb.corrections.length ? el("div", { class: "fb-section" }, el("h2", { text: "Corrections" }), fb.corrections.map((c) =>
+  );
+  const fixes = el("div", { class: "fb-col" },
+    fb.corrections.length ? el("div", {}, el("h2", { text: "Corrections" }), fb.corrections.map((c) =>
       el("div", { class: "correction" },
         el("span", { class: "old", text: c.original }), " → ", el("span", { class: "new", text: c.revised }),
         c.explanation ? el("p", { text: c.explanation }) : null))) : null,
@@ -249,6 +280,7 @@ function feedbackNodes(result) {
     fb.improved_version ? el("div", { class: "fb-section" }, el("h2", { text: "Model version" }),
       el("div", { class: "improved", text: fb.improved_version })) : null,
   );
+  return el("div", { class: "fb-grid" }, verdict, fixes);
 }
 
 // Daily actions -------------------------------------------------------------
@@ -498,6 +530,20 @@ async function checkHealth() {
     pill.textContent = "Server error";
   }
 }
+
+// Keyboard: ⌘/Ctrl+Enter moves to the next step (or submits on Check); Alt+1–4 jumps to a step.
+document.addEventListener("keydown", (event) => {
+  // Skip while an input method (for example Chinese pinyin) is composing, and ignore held-down keys.
+  if (state.view !== "today" || !state.data || event.isComposing || event.repeat) return;
+  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    event.preventDefault();
+    if (state.step === CHECK) submitDraft();
+    else if (state.step < CHECK) goToStep(state.step + 1);
+  } else if (event.altKey && /^Digit[1-4]$/.test(event.code)) {
+    event.preventDefault();
+    goToStep(Number(event.code.slice(-1)) - 1);
+  }
+});
 
 for (const button of document.querySelectorAll(".tab")) {
   button.addEventListener("click", () => setView(button.dataset.view));

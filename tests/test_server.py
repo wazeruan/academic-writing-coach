@@ -187,3 +187,11 @@ def test_index_page_contains_every_id_the_front_end_uses(server):
     html = data.decode("utf-8")
     missing = [element_id for element_id in FRONT_END_IDS if f'id="{element_id}"' not in html]
     assert missing == []
+
+
+def test_api_today_focus_has_checklist_of_strings(server):
+    status, payload = _json(server, "GET", "/api/today")
+    assert status == 200
+    checklist = payload["focus"]["checklist"]
+    assert isinstance(checklist, list) and checklist
+    assert all(isinstance(item, str) and item.strip() for item in checklist)

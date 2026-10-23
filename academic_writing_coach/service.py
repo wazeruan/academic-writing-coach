@@ -200,7 +200,7 @@ def today(settings: Settings, store: Store, day: date) -> dict[str, Any]:
         "date": day.isoformat(),
         "challenge": challenge,
         "source": source,
-        "focus": {"id": unit.id, "title": unit.title, "skill": unit.skill},
+        "focus": {"id": unit.id, "title": unit.title, "skill": unit.skill, "checklist": list(unit.checklist)},
         "draft": draft,
         "word_count": word_count(draft["draft"]),
         "submissions": store.submissions_for(day),

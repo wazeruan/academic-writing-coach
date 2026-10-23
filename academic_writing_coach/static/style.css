@@ -211,6 +211,46 @@ textarea {
   resize: none;
 }
 
+/* The writing boxes use a book serif at a comfortable size, for long reading and drafting. */
+textarea.plan, textarea.draft {
+  font-family: "Iowan Old Style", Charter, "Palatino Linotype", Georgia, serif;
+  font-size: 17px;
+  line-height: 1.7;
+  padding: 16px 20px;
+}
+textarea:focus { border-color: var(--accent); outline: none; box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* Write tab: the editor beside a rail with your plan and the focus checklist. */
+.write-grid { flex: 1; min-height: 0; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); }
+.editor-col { display: flex; flex-direction: column; min-height: 0; }
+.rail {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 14px;
+  overflow-y: auto;
+}
+.rail h3 {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--muted);
+}
+.rail h3:first-child { margin-top: 0; }
+.rail-plan { white-space: pre-wrap; line-height: 1.5; }
+
+.actions { display: flex; align-items: center; gap: 10px; }
+.kbd-hint {
+  font: 12px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
 /* Footer of the work area: progress on the left, action on the right */
 .row {
   display: flex;
@@ -327,6 +367,20 @@ label.check input { margin-top: 4px; accent-color: var(--accent); }
   .unit-layout { grid-template-columns: minmax(300px, 420px) minmax(0, 1fr); height: 100%; }
   #learn-panel { height: 100%; }
   .unit-layout textarea { min-height: 200px; }
+}
+
+/* Large desktop windows: a rail beside the editor, two-column feedback, a wider question column. */
+.fb-grid { display: grid; gap: 0 28px; }
+@media (min-width: 1200px) {
+  .write-grid { grid-template-columns: minmax(0, 1fr) 280px; }
+  .fb-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+@media (max-width: 1199px) {
+  .rail { order: -1; max-height: 120px; }
+}
+@media (min-width: 1500px) {
+  .daily { grid-template-columns: 420px minmax(0, 1fr); }
+  .write-grid { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 
 /* Phones: stack, and let the question fold away to give the writing room -- */
