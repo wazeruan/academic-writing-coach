@@ -195,7 +195,11 @@ def progress(store: Store, day: date) -> dict[str, Any]:
 def today(settings: Settings, store: Store, day: date) -> dict[str, Any]:
     challenge, source = challenge_for(settings, store, day)
     draft = store.get_draft(day)
-    unit = current_unit(store)
+    # Show the unit this challenge was written for, even if that unit was completed since.
+    try:
+        unit = unit_by_id(challenge.get("unit_id", ""))
+    except KeyError:
+        unit = current_unit(store)
     return {
         "date": day.isoformat(),
         "challenge": challenge,

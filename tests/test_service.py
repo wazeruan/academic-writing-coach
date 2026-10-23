@@ -207,3 +207,21 @@ def test_today_payload_with_llm_down(make_settings, store):
         "units_total": len(UNITS),
     }
     assert payload["focus"]["id"] == UNITS[0].id
+
+
+def test_today_focus_follows_challenge_unit_after_unit_completed(make_settings, store):
+    store.save_challenge(DAY, {**valid_challenge(), "unit_id": UNITS[0].id})
+    store.record_unit_score(UNITS[0].id, 80.0, True)
+
+    payload = service.today(make_settings(unreachable_url()), store, DAY)
+
+    assert payload["focus"]["id"] == UNITS[0].id
+    assert service.current_unit(store).id == UNITS[1].id
+
+
+def test_today_focus_falls_back_to_current_unit_without_unit_id(make_settings, store):
+    store.save_challenge(DAY, valid_challenge())  # no unit_id stored
+
+    payload = service.today(make_settings(unreachable_url()), store, DAY)
+
+    assert payload["focus"]["id"] == service.current_unit(store).id == UNITS[0].id
