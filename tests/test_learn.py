@@ -140,3 +140,16 @@ def test_practice_start_blank_model_task_falls_back(fake_llm, make_settings, sto
 
     assert result["source"] == "template"
     assert result["task"] == UNITS[0].practice_task
+
+
+def test_every_unit_is_complete_and_ids_are_unique():
+    from academic_writing_coach.lessons import UNIT_IDS
+
+    assert len(set(UNIT_IDS)) == len(UNITS)
+    text_fields = ("title", "skill", "explanation", "weak", "strong", "why_it_works", "practice_task")
+    for unit in UNITS:
+        for field in text_fields:
+            value = getattr(unit, field)
+            assert isinstance(value, str) and value.strip(), f"{unit.id}.{field} is empty"
+        assert len(unit.checklist) == 3, f"{unit.id} must have exactly 3 checklist items"
+        assert all(isinstance(item, str) and item.strip() for item in unit.checklist), unit.id
