@@ -159,3 +159,78 @@ def make_settings(tmp_path):
 @pytest.fixture
 def store(tmp_path) -> Store:
     return Store(tmp_path / "store.sqlite3")
+
+
+class TruncatingLLM:
+    """Raw socket server: answers GET /health in full, but cuts every chat reply short."""
+
+    def __init__(self) -> None:
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("127.0.0.1", 0))
+        self._sock.listen(8)
+        self._sock.settimeout(0.2)
+        self.url = f"http://127.0.0.1:{self._sock.getsockname()[1]}/v1"
+        self.chat_requests = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
+
+    def _serve(self) -> None:
+        while not self._stop.is_set():
+            try:
+                conn, _ = self._sock.accept()
+            except (socket.timeout, OSError):
+                continue
+            with conn:
+                conn.settimeout(5)
+                try:
+                    self._handle(conn)
+                except OSError:
+                    pass
+
+    def _handle(self, conn: socket.socket) -> None:
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = conn.recv(4096)
+            if not chunk:
+                return
+            data += chunk
+        head, _, rest = data.partition(b"\r\n\r\n")
+        request_line = head.split(b"\r\n", 1)[0].decode("latin-1")
+        length = 0
+        for line in head.split(b"\r\n")[1:]:
+            name, _, value = line.partition(b":")
+            if name.strip().lower() == b"content-length":
+                length = int(value.strip() or 0)
+        while len(rest) < length:
+            chunk = conn.recv(4096)
+            if not chunk:
+                break
+            rest += chunk
+        if request_line.startswith("GET"):
+            body = b'{"default_model": "test-model"}'
+            conn.sendall(
+                b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                b"Content-Length: " + str(len(body)).encode() + b"\r\nConnection: close\r\n\r\n" + body
+            )
+            return
+        self.chat_requests += 1
+        conn.sendall(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            b"Content-Length: 500\r\nConnection: close\r\n\r\n"
+            b'{"choices": [{"message": {"content": "par'
+        )
+        # Returning closes the socket after 20 of the promised 500 body bytes.
+
+    def close(self) -> None:
+        self._stop.set()
+        self._sock.close()
+        self._thread.join(5)
+
+
+@pytest.fixture
+def truncating_llm():
+    server = TruncatingLLM()
+    yield server
+    server.close()

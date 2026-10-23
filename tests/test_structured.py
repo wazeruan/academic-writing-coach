@@ -220,3 +220,16 @@ def test_message_mentioning_400_without_status_400_does_not_retry(monkeypatch, m
     assert len(calls) == 1, "no retry without response_format when the status is not 400"
     assert "response_format" in calls[0]
     assert settings.llm_base_url.rstrip("/") not in llm._schema_supported
+
+
+# Model server dies mid-reply ----------------------------------------------------
+
+def test_truncated_reply_raises_unavailable_and_is_not_retried(truncating_llm, make_settings):
+    settings = make_settings(truncating_llm.url)
+
+    with pytest.raises(LLMUnavailable, match="stopped"):
+        llm.chat(MESSAGES, settings)
+
+    with pytest.raises(LLMUnavailable):
+        llm.chat_json(MESSAGES, settings)
+    assert truncating_llm.chat_requests == 2, "chat_json must not retry a server that stopped mid-reply"

@@ -195,3 +195,18 @@ def test_api_today_focus_has_checklist_of_strings(server):
     checklist = payload["focus"]["checklist"]
     assert isinstance(checklist, list) and checklist
     assert all(isinstance(item, str) and item.strip() for item in checklist)
+
+
+def test_submit_when_model_stops_mid_reply_returns_502(tmp_path, truncating_llm, make_settings):
+    settings = make_settings(truncating_llm.url)
+    httpd = make_server(settings, Store(tmp_path / "trunc.sqlite3"))
+    thread = threading.Thread(target=httpd.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
+    thread.start()
+    try:
+        status, payload = _json(httpd, "POST", "/api/submit", body={"plan": "", "draft": words(40)})
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+        thread.join(5)
+    assert status == 502
+    assert "stopped" in payload["error"]

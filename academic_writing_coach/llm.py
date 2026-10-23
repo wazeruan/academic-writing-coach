@@ -1,5 +1,6 @@
 """Minimal client for a local OpenAI-compatible chat server (LM Studio, Ollama, llama.cpp)."""
 
+import http.client
 import json
 import re
 import threading
@@ -129,6 +130,12 @@ def _post(url: str, body: dict[str, Any], settings: Settings) -> Any:
             return json.load(response)
     except urllib.error.HTTPError as exc:
         raise LLMReplyError(f"Local LLM answered with HTTP {exc.code}: {exc.reason}", status=exc.code) from exc
+    except http.client.HTTPException as exc:
+        # The connection dropped mid-reply, usually because the model server stopped or ran out of memory.
+        raise LLMUnavailable(
+            "The local model stopped while answering. Check that LM Studio is still running, "
+            "then try again. Your text is saved."
+        ) from exc
     except (urllib.error.URLError, OSError, ValueError) as exc:
         raise LLMUnavailable(
             f"Local LLM is not reachable at {settings.llm_base_url} ({exc}). "
