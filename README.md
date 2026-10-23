@@ -1,50 +1,55 @@
 # Academic Writing Coach
 
-A Duolingo-style daily practice app for academic English. Each day you get a new
-writing challenge (abstract, introduction, methods, reviewer response, and so on),
-work through five steps, and submit your text. A local LLM running in LM Studio
-generates the challenge and grades your writing against a rubric.
+A Duolingo-style practice app for academic English, graded by a local LLM in LM Studio.
+It has two parts:
 
-## Daily flow
+- **Learn**: 12 ordered units (precise sentences, register, hedging, cohesion, citations,
+  argument, structure, limitations, concision, and more). Each has a rule, a weaker and a
+  stronger example, a checklist, and a practice exercise. Score 70/100 to unlock the next unit.
+- **Today**: one writing challenge a day, focused on your current unit. The question stays
+  on screen while you work through **Plan → Write → Check → Feedback**.
 
-1. **Understand**: read the situation, task, background facts and key vocabulary.
-2. **Plan**: outline the structure, using the hints.
-3. **Write**: draft within the target word range. Your text autosaves.
-4. **Check**: tick the requirements you met, then submit.
-5. **Feedback**: rubric scores, corrections, a model rewrite, and a mini exercise.
-
-Streaks, XP, and difficulty (beginner, intermediate, advanced) are tracked locally.
+Feedback gives rubric scores, a check of each requirement, corrections that quote your
+text, a mini exercise, and a model rewrite. Streaks, XP, and difficulty are tracked locally.
 
 ## Setup
 
-Requirements: Python 3.11+ and [uv](https://docs.astral.sh/uv/). LM Studio is optional;
-without it the app serves an offline template challenge and cannot grade.
+Requirements: Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-cd ~/Documents/academic-writing-coach
+cd ~/Documents/Projects/academic-writing-coach
 uv sync
 ```
 
-Start the local model:
-
-1. Open LM Studio, download a capable instruction model (7B–14B works; larger is better for grading).
-2. Load it, then open the Developer tab and start the server (port 1234).
-3. Copy the model identifier shown in LM Studio.
-
-Run the app with that identifier:
+In LM Studio, load an instruction model and start the server (Developer tab, port 1234).
+Then run:
 
 ```bash
-COACH_LLM_MODEL="your-model-identifier" uv run python -m academic_writing_coach
+COACH_LLM_API_KEY=your-key uv run python -m academic_writing_coach
 ```
 
-Open http://127.0.0.1:8765 in your browser.
+Open http://127.0.0.1:8765. Leave out `COACH_LLM_API_KEY` if your server does not require one.
+
+The app uses LM Studio's default model unless you set `COACH_LLM_MODEL`, so switching models
+in LM Studio needs no code change. Without a running model the app still opens, with an
+offline challenge and built-in exercises, but it cannot grade.
+
+## How the app talks to the model
+
+- Replies use structured JSON output (a JSON schema), which keeps small models on format.
+  If a server rejects that, the app falls back to plain prompts automatically.
+- An unusable reply is retried once at a lower temperature. An unreachable server is not retried.
+- A 3-second health probe, cached for 30 seconds, runs before each model call, so a stopped
+  or hung server falls back in seconds instead of waiting for the full timeout.
+- Today's challenge is generated in the background at startup, so the first page load does not wait.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `COACH_LLM_URL` | `http://localhost:1234/v1` | OpenAI-compatible base URL |
-| `COACH_LLM_MODEL` | `local-model` | Model identifier sent to the server |
+| `COACH_LLM_MODEL` | server default | Model identifier sent to the server |
+| `COACH_LLM_API_KEY` | none | Bearer token, if the server requires one |
 | `COACH_LLM_TIMEOUT` | `240` | Seconds to wait for a model reply |
 | `COACH_PORT` | `8765` | Port for the web app |
 | `COACH_DB` | `data/coach.sqlite3` | SQLite database path |
@@ -57,9 +62,10 @@ uv run pytest
 
 ## Project layout
 
-- `academic_writing_coach/curriculum.py`: scenarios, topics, and prompts
+- `academic_writing_coach/lessons.py`: the Learn units
+- `academic_writing_coach/curriculum.py`: scenarios, topics, prompts, and JSON schemas
 - `academic_writing_coach/llm.py`: client for the local model
-- `academic_writing_coach/service.py`: challenge, grading, and progress logic
+- `academic_writing_coach/service.py`: challenge, grading, Learn, and progress logic
 - `academic_writing_coach/store.py`: SQLite storage
 - `academic_writing_coach/server.py`: HTTP server and JSON API
 - `academic_writing_coach/static/`: single-page front end (no build step)

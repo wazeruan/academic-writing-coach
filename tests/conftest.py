@@ -4,6 +4,7 @@ import json
 import socket
 import sys
 import threading
+import time
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -14,6 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from academic_writing_coach import llm  # noqa: E402
 from academic_writing_coach.config import Settings  # noqa: E402
 from academic_writing_coach.store import Store  # noqa: E402
 
@@ -27,6 +29,8 @@ class FakeLLM:
         self.replies: list[str] = [""]
         self.status = 200
         self.raw_body: bytes | None = None  # if set, sent verbatim instead of a chat completion
+        self.delay = 0.0  # seconds to wait before answering a chat request
+        self.reject_response_format = False  # answer 400 to any request that carries response_format
         self.requests: list[dict] = []
         self._lock = threading.Lock()
         fake = self
@@ -41,6 +45,11 @@ class FakeLLM:
                     status = fake.status
                     content = fake._next_reply()
                     raw_body = fake.raw_body
+                    delay = fake.delay
+                if delay:
+                    time.sleep(delay)
+                if fake.reject_response_format and "response_format" in body:
+                    status = 400
                 if status != 200:
                     data = b'{"error": "model not loaded"}'
                 elif raw_body is not None:
@@ -113,6 +122,16 @@ def grading_reply(scores: dict) -> str:
 
 def words(n: int) -> str:
     return " ".join(["word"] * n)
+
+
+@pytest.fixture(autouse=True)
+def _reset_llm_caches():
+    """Probe results and schema support are cached per URL; start every test with them cleared."""
+    llm._probes.clear()
+    llm._schema_supported.clear()
+    yield
+    llm._probes.clear()
+    llm._schema_supported.clear()
 
 
 @pytest.fixture

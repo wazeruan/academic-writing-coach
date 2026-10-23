@@ -233,6 +233,12 @@ function feedbackNodes(result) {
       el("span", { class: "of", text: `/ 100 · +${result.xp} XP` })),
     el("div", { class: "score" }, scoreRows),
     fb.next_focus ? el("p", { class: "brief" }, el("strong", { text: "Next focus: " }), fb.next_focus) : null,
+    // The teacher's check of each requirement. Older feedback saved before this existed has none.
+    (fb.requirements_met || []).length ? el("div", { class: "fb-section" }, el("h2", { text: "Requirements" }),
+      el("ul", { class: "req-list" }, fb.requirements_met.map((r) =>
+        el("li", { class: r.met ? "met" : "missed" },
+          el("span", { class: "mark", text: r.met ? "✓" : "✗" }),
+          el("span", {}, el("strong", { text: r.requirement }), r.note ? ` ${r.note}` : ""))))) : null,
     fb.strengths.length ? el("div", { class: "fb-section" }, el("h2", { text: "What works" }),
       el("ul", { class: "list" }, fb.strengths.map((s) => el("li", { text: s })))) : null,
     fb.corrections.length ? el("div", { class: "fb-section" }, el("h2", { text: "Corrections" }), fb.corrections.map((c) =>

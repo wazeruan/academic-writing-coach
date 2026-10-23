@@ -2,6 +2,7 @@
 
 import json
 import mimetypes
+import threading
 from datetime import date
 from functools import partial
 from http import HTTPStatus
@@ -152,14 +153,19 @@ def _text(body: dict[str, Any], key: str) -> str:
 def make_server(settings: Settings, store: Store | None = None) -> ThreadingHTTPServer:
     store = store or Store(settings.db_path)
     handler = partial(CoachHandler, settings=settings, store=store)
-    return ThreadingHTTPServer((settings.host, settings.port), handler)
+    server = ThreadingHTTPServer((settings.host, settings.port), handler)
+    server.daemon_threads = True  # A slow model call must not block shutdown.
+    return server
 
 
 def main() -> None:
-    settings = llm.resolve_model(Settings())
-    server = make_server(settings)
+    settings = Settings()
+    store = Store(settings.db_path)
+    server = make_server(settings, store)
+    # Prepare today's challenge while the browser opens, so the first page load does not wait for the model.
+    threading.Thread(target=service.warm_today, args=(settings, store, date.today()), daemon=True).start()
     print(f"Academic Writing Coach running at http://{settings.host}:{settings.port}")
-    print(f"Local LLM expected at {settings.llm_base_url} (model: {settings.llm_model})")
+    print(f"Local LLM expected at {settings.llm_base_url} (model: {llm.model_name(settings)})")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

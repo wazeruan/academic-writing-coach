@@ -95,7 +95,7 @@ def test_post_submit_with_short_text_returns_400(server):
 def test_post_submit_with_llm_down_returns_502(server):
     status, payload = _json(server, "POST", "/api/submit", body={"plan": "", "draft": words(40)})
     assert status == 502
-    assert "not reachable" in payload["error"]
+    assert "offline" in payload["error"]
 
 
 def test_post_level_rejects_unknown_level(server):

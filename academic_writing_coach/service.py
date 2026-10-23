@@ -1,14 +1,18 @@
 """Application logic shared by the web server and tests."""
 
 import math
+import threading
 from datetime import date
 from typing import Any
 
 from . import llm
 from .config import Settings
 from .curriculum import (
+    CHALLENGE_SCHEMA,
     GRADING_RUBRIC,
+    GRADING_SCHEMA,
     LEVELS,
+    PRACTICE_SCHEMA,
     SCENARIOS,
     generation_messages,
     grading_messages,
@@ -24,6 +28,7 @@ MIN_WORDS_TO_SUBMIT = 30
 MAX_TASK_CHARS = 2000
 TEXT_KEYS = ("title", "situation", "task")
 LIST_KEYS = ("background", "requirements", "plan_hints")
+_generation_lock = threading.Lock()
 
 
 def word_count(text: str) -> int:
@@ -125,13 +130,28 @@ def challenge_for(settings: Settings, store: Store, day: date) -> tuple[dict[str
     if stored is not None:
         return stored, "model"
 
+    # One generation at a time: the startup warm-up and the first page load must not both call the model.
+    with _generation_lock:
+        stored = store.get_challenge(day)
+        if stored is not None:
+            return stored, "model"
+        return _generate_challenge(settings, store, day)
+
+
+def _generate_challenge(settings: Settings, store: Store, day: date) -> tuple[dict[str, Any], str]:
     level = store.get_setting("level", "intermediate")
     scenario = pick_scenario(day)
     topic = pick_topic(day)
     unit = current_unit(store)
     try:
+        # A quick probe first, so a stopped or hung server falls back in seconds, not after the full timeout.
+        if not llm.reachable(settings):
+            raise llm.LLMUnavailable("Local LLM is offline")
         generated = llm.chat_json(
-            generation_messages(scenario, level, topic, focus_skill=unit.skill), settings, temperature=0.9
+            generation_messages(scenario, level, topic, focus_skill=unit.skill),
+            settings,
+            temperature=0.9,
+            schema=CHALLENGE_SCHEMA,
         )
         source = "model"
     except llm.LLMError:
@@ -148,6 +168,14 @@ def challenge_for(settings: Settings, store: Store, day: date) -> tuple[dict[str
     if source == "model":
         store.save_challenge(day, generated)
     return generated, source
+
+
+def warm_today(settings: Settings, store: Store, day: date) -> None:
+    """Generate today's challenge in the background at startup, so the first page load does not wait."""
+    try:
+        challenge_for(settings, store, day)
+    except Exception:  # Best effort: the page load tries again and reports any error.
+        pass
 
 
 def progress(store: Store, day: date) -> dict[str, Any]:
@@ -203,11 +231,20 @@ def _clamp_score(value: Any) -> int:
     return max(1, min(5, round(number)))
 
 
-def _normalise_feedback(raw: dict[str, Any]) -> dict[str, Any]:
+def _normalise_feedback(raw: dict[str, Any], requirement_count: int) -> dict[str, Any]:
     scores_in = raw.get("scores")
     if not isinstance(scores_in, dict) or not any(key in scores_in for key in GRADING_RUBRIC):
-        raise llm.LLMError("Model reply had no rubric scores; try submitting again.")
+        raise llm.LLMReplyError("Model reply had no rubric scores; try submitting again.")
     scores = {key: _clamp_score(scores_in.get(key)) for key in GRADING_RUBRIC}
+    requirements_met = [
+        {
+            "requirement": str(item.get("requirement", "")),
+            "met": item.get("met") is True,
+            "note": str(item.get("note", "")),
+        }
+        for item in raw.get("requirements_met", [])
+        if isinstance(item, dict)
+    ][:requirement_count]
     corrections = [
         {
             "original": str(item.get("original", "")),
@@ -219,6 +256,7 @@ def _normalise_feedback(raw: dict[str, Any]) -> dict[str, Any]:
     ][:5]
     return {
         "scores": scores,
+        "requirements_met": requirements_met,
         "strengths": [str(s) for s in raw.get("strengths", [])][:3],
         "corrections": corrections,
         "improved_version": str(raw.get("improved_version", "")),
@@ -228,9 +266,19 @@ def _normalise_feedback(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def _grade(settings: Settings, store: Store, challenge: dict[str, Any], draft: str, plan: str) -> dict[str, Any]:
+    if not llm.reachable(settings):
+        raise llm.LLMUnavailable("The local model is offline, so this cannot be graded yet. Your text is saved.")
     level = store.get_setting("level", "intermediate")
-    raw = llm.chat_json(grading_messages(challenge, draft, plan, level), settings, temperature=0.3, max_tokens=3000)
-    feedback = _normalise_feedback(raw)
+    messages = grading_messages(challenge, draft, plan, level)
+    requirement_count = len(challenge.get("requirements", []))
+    for attempt in range(2):  # One retry when the reply parses but has no usable scores.
+        raw = llm.chat_json(messages, settings, temperature=0.2, max_tokens=3000, schema=GRADING_SCHEMA)
+        try:
+            feedback = _normalise_feedback(raw, requirement_count)
+            break
+        except llm.LLMReplyError:
+            if attempt == 1:
+                raise
     average = sum(feedback["scores"].values()) / len(feedback["scores"])
     return {
         "feedback": feedback,
@@ -271,8 +319,13 @@ def practice_start(settings: Settings, store: Store, unit_id: str) -> dict[str, 
     unit = _ensure_unlocked(store, unit_id)
     level = store.get_setting("level", "intermediate")
     try:
+        if not llm.reachable(settings):
+            raise llm.LLMUnavailable("Local LLM is offline")
         generated = llm.chat_json(
-            practice_messages(unit.title, unit.skill, level, unit.practice_task), settings, temperature=0.9
+            practice_messages(unit.title, unit.skill, level, unit.practice_task),
+            settings,
+            temperature=0.9,
+            schema=PRACTICE_SCHEMA,
         )
         task = generated.get("task")
         source = "model"

@@ -11,7 +11,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 class Settings:
     # LM Studio serves an OpenAI-compatible API on port 1234 by default.
     llm_base_url: str = os.environ.get("COACH_LLM_URL", "http://localhost:1234/v1")
-    # Leave empty to use the model LM Studio reports as its default (see llm.resolve_model).
+    # Leave empty to use the model LM Studio reports as its default (see llm.model_name).
     llm_model: str = os.environ.get("COACH_LLM_MODEL", "")
     llm_timeout: float = float(os.environ.get("COACH_LLM_TIMEOUT", "240"))
     # Only needed when the local server has authentication turned on (LM Studio's "require API key").
